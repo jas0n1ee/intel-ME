@@ -172,3 +172,13 @@ UpgradeLog*.htm
 
 # Microsoft Fakes
 FakesAssemblies/
+#video files
+*.yuv
+*.mp4
+#other files
+*.pdf
+*.txt
+*.bmp
+#vim
+*swp
+*~
