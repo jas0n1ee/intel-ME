@@ -42,10 +42,10 @@
         } \
 };
 
-static const cl_uint kMBBlockType = CL_ME_MB_TYPE_16x16_INTEL;
+static const cl_uint kMBBlockType = CL_ME_MB_TYPE_8x8_INTEL;
 #define subpixel_mode		CL_ME_SUBPIXEL_MODE_QPEL_INTEL
 #define sad_adjust_mode		CL_ME_SAD_ADJUST_MODE_HAAR_INTEL
-#define search_path_type	CL_ME_SEARCH_PATH_RADIUS_16_12_INTEL
+#define search_path_type	CL_ME_SEARCH_PATH_RADIUS_4_4_INTEL
 
 
 CL_EXT_DECLARE( clCreateAcceleratorINTEL );
@@ -137,7 +137,7 @@ inline unsigned int ComputeSubBlockSize( cl_uint nMBType )
         throw std::runtime_error("Unknown macroblock type");
     }
 }
-void MotionEstimation( void *src,void *ref, std::vector<MotionVector> & MVs, const int width,const int height)
+void MotionEstimation( void *src,void *ref, std::vector<MotionVector> & MVs,std::vector<MotionVector>& preMVs,bool preMVEnable, const int width,const int height)
 {
 
     // OpenCL initialization
@@ -191,6 +191,8 @@ void MotionEstimation( void *src,void *ref, std::vector<MotionVector> & MVs, con
 	cl::Image2D refImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
 	cl::Image2D srcImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
     cl::Buffer mvBuffer(context, CL_MEM_WRITE_ONLY, mvImageWidth * mvImageHeight * sizeof(MotionVector));
+	cl::Buffer pmv(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(MotionVector));
+	
 
     // Bootstrap video sequence reading
     PlanarImage * currImage = CreatePlanarImage(width, height);
@@ -204,25 +206,27 @@ void MotionEstimation( void *src,void *ref, std::vector<MotionVector> & MVs, con
     region[1] = height;
     region[2] = 1;
 
+	queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
     // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
 	queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
-
-    // First frame is already in srcImg, so we start with the second frame
 	// Load next picture
-	// Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
-	queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
-
 	// Schedule full-frame motion estimation
 	kernel.setArg(0, accelerator);
 	kernel.setArg(1, srcImage);
 	kernel.setArg(2, refImage);
-	kernel.setArg(3, sizeof(cl_mem), NULL);//in this simple tutorial we have no "prediction" vectors for the input (often, the motion vectors from downscaled image or from the prev. frame are used)
+	if(preMVEnable) 
+	{
+		queue.enqueueWriteBuffer(pmv,CL_TRUE,0,sizeof(MotionVector) * mvImageHeight*mvImageWidth,&preMVs[0],0,0); 
+		kernel.setArg(3, pmv);
+	}
+	else kernel.setArg(3, sizeof(cl_mem), NULL);
 	kernel.setArg(4, mvBuffer);
 	kernel.setArg(5, sizeof(cl_mem), NULL); //in this simple tutorial we don't want to compute residuals
 	queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(width, height), cl::NullRange);
 	queue.finish();
 	// Read back resulting motion vectors (in a sync way)
 	void * pMVs = &MVs[0];
+	//
 	queue.enqueueReadBuffer(mvBuffer,CL_TRUE,0,sizeof(MotionVector) * mvImageWidth * mvImageHeight,pMVs,0,0);
     std::cout << std::setiosflags(std::ios_base::fixed) << std::setprecision(3);
     pfn_clReleaseAcceleratorINTEL(accelerator);
@@ -417,144 +421,53 @@ void OverlayVectors(unsigned int subBlockSize, const MotionVector* pMV, PlanarIm
     }
 }
 
-
-int _main( int argc, const char** argv )
-{
-    try
-    {
-        CmdParserMV cmd(argc, argv);
-        cmd.parse();
-
-        // Immediatly exit if user wanted to see the usage information only.
-        if(cmd.help.isSet())
-        {
-            return 0;
-        }
-
-        const int width = cmd.width.getValue();
-        const int height = cmd.height.getValue();
-        // Open input sequence
-        Capture * pCapture = Capture::CreateFileCapture(cmd.fileName.getValue(), width, height);
-        if (!pCapture)
-        {
-            throw std::exception("Failed opening video input sequence...");
-        }
-
-        // Process sequence
-        std::cout << "Processing " << pCapture->GetNumFrames() << " frames ..." << std::endl;
-        std::vector<MotionVector> MVs;
-        ExtractMotionVectorsFullFrameWithOpenCL(pCapture, MVs, cmd);
-
-        // Generate sequence with overlaid motion vectors
-        FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
-        PlanarImage * srcImage = CreatePlanarImage(width, height);
-
-        int mvImageWidth, mvImageHeight;
-        ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
-        unsigned int subBlockSize = ComputeSubBlockSize(kMBBlockType);
-
-        for (int k = 0; k < pCapture->GetNumFrames(); k++)
-        {
-            pCapture->GetSample(k, srcImage);
-            // Overlay MVs on Src picture, except the very first one
-            if(k>0)
-                OverlayVectors(subBlockSize, &MVs[k*mvImageWidth*mvImageHeight], srcImage, mvImageWidth, mvImageHeight, width, height);
-            pWriter->AppendFrame(srcImage);
-        }
-        std::cout << "Writing " << pCapture->GetNumFrames() << " frames to " << cmd.overlayFileName.getValue() << "..." << std::endl;
-        pWriter->WriteToFile(cmd.overlayFileName.getValue().c_str());
-
-        FrameWriter::Release(pWriter);
-        Capture::Release(pCapture);
-        ReleaseImage(srcImage);
-    }
-    catch (cl::Error & err)
-    {
-        std::cout << err.what() << "(" << err.err() << ")" << std::endl;
-        return 1;
-    }
-    catch (std::exception & err)
-    {
-        std::cout << err.what() << std::endl;
-        return 1;
-    }
-    catch (...)
-    {
-        std::cout << "Unknown exception! Exit...";
-        return 1;
-    }
-
-    std::cout << "Done!" << std::endl;
-
-    return 0;
-}
 int main( int argc, const char** argv )
 {
-try
-    {
-        CmdParserMV cmd(argc, argv);
-        cmd.parse();
+	CmdParserMV cmd(argc, argv);
+	cmd.parse();
 
-        // Immediatly exit if user wanted to see the usage information only.
-        if(cmd.help.isSet())
-        {
-            return 0;
-        }
+	// Immediatly exit if user wanted to see the usage information only.
 
-        const int width = cmd.width.getValue();
-        const int height = cmd.height.getValue();
-        // Open input sequence
-        Capture * pCapture = Capture::CreateFileCapture(cmd.fileName.getValue(), width, height);
-        if (!pCapture)
-        {
-            throw std::exception("Failed opening video input sequence...");
-        }
+	const int width = cmd.width.getValue();
+	const int height = cmd.height.getValue();
+	// Open input sequence
+	Capture * pCapture = Capture::CreateFileCapture(cmd.fileName.getValue(), width, height);
 
-        // Process sequence
-        std::cout << "Processing " << pCapture->GetNumFrames() << " frames ..." << std::endl;
-		
-		PlanarImage * refImage = CreatePlanarImage(width, height);
-		PlanarImage * srcImage = CreatePlanarImage(width, height);
+	// Process sequence
+	std::cout << "Processing " << pCapture->GetNumFrames() << " frames ..." << std::endl;
+	
+	PlanarImage * refImage = CreatePlanarImage(width, height);
+	PlanarImage * srcImage = CreatePlanarImage(width, height);
+	PlanarImage * trdImage = CreatePlanarImage(width, height);
+	pCapture->GetSample(1,refImage);
+	pCapture->GetSample(2,srcImage);
+	pCapture->GetSample(3,trdImage);
+	std::vector<MotionVector> MV1;
+	std::vector<MotionVector> MV2;
+	MotionEstimation(srcImage->Y,refImage->Y,MV1,(vector<MotionVector>)NULL,FALSE,width,height);
+	MotionEstimation(trdImage->Y,srcImage->Y,MV2,MV1,TRUE,width,height);
 
-		pCapture->GetSample(1,refImage);
-		pCapture->GetSample(2,srcImage);
-		std::vector<MotionVector> MVs;
-		MotionEstimation(srcImage->Y,refImage->Y,MVs,width,height);
-
-        // Generate sequence with overlaid motion vectors
-        FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
+	// Generate sequence with overlaid motion vectors
+	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
 
 
-        int mvImageWidth, mvImageHeight;
-        ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
-        unsigned int subBlockSize = ComputeSubBlockSize(kMBBlockType);
+	int mvImageWidth, mvImageHeight;
+	ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
+	unsigned int subBlockSize = ComputeSubBlockSize(kMBBlockType);
 
-		pCapture->GetSample(2, srcImage);
-		// Overlay MVs on Src picture, except the very first one
-		OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
-		pWriter->AppendFrame(srcImage);
-        std::cout << "Writing " << pCapture->GetNumFrames() << " frames to " << cmd.overlayFileName.getValue() << "..." << std::endl;
-        pWriter->WriteToFile(cmd.overlayFileName.getValue().c_str());
+	pCapture->GetSample(2, srcImage);
+	// Overlay MVs on Src picture, except the very first one
+	OverlayVectors(subBlockSize, &MV1[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+	pWriter->AppendFrame(srcImage);
+	pCapture->GetSample(3, srcImage);
+	OverlayVectors(subBlockSize, &MV2[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+	pWriter->AppendFrame(srcImage);
+	std::cout << "Writing " << pCapture->GetNumFrames() << " frames to " << cmd.overlayFileName.getValue() << "..." << std::endl;
+	pWriter->WriteToFile(cmd.overlayFileName.getValue().c_str());
 
-        FrameWriter::Release(pWriter);
-        Capture::Release(pCapture);
-        ReleaseImage(srcImage);
-    }
-    catch (cl::Error & err)
-    {
-        std::cout << err.what() << "(" << err.err() << ")" << std::endl;
-        return 1;
-    }
-    catch (std::exception & err)
-    {
-        std::cout << err.what() << std::endl;
-        return 1;
-    }
-    catch (...)
-    {
-        std::cout << "Unknown exception! Exit...";
-        return 1;
-    }
+	FrameWriter::Release(pWriter);
+	Capture::Release(pCapture);
+	ReleaseImage(srcImage);
 
     std::cout << "Done!" << std::endl;
 
