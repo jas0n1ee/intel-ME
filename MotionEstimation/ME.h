@@ -56,4 +56,5 @@ class ME
 		cl::Image2D srcImage;
 		cl::Buffer mvBuffer;
 		cl::Buffer pmv;
+		cl::Buffer res;
 };	

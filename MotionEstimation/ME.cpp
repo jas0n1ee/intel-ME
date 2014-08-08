@@ -92,6 +92,7 @@ ME::ME(int width,int height,int search_path)
 	srcImage=cl::Image2D(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
     mvBuffer=cl::Buffer(context, CL_MEM_WRITE_ONLY, mvImageWidth * mvImageHeight * sizeof(MotionVector));
 	pmv=cl::Buffer(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(MotionVector));
+	res=cl::Buffer(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(USHORT));
 }
 void ME::ExtractMotionEstimation(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,bool preMVEnable)
 {
@@ -119,11 +120,15 @@ void ME::ExtractMotionEstimation(void *src,void *ref,std::vector<MotionVector>& 
 	}
 	else kernel.setArg(3, sizeof(cl_mem), NULL);
 	kernel.setArg(4, mvBuffer);
-	kernel.setArg(5, sizeof(cl_mem), NULL); //in this simple tutorial we don't want to compute residuals
+
+	USHORT * residuals=new USHORT[width*height];
+	kernel.setArg(5, res); //in this simple tutorial we don't want to compute residuals
+
 	queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(width, height), cl::NullRange);
 	queue.finish();
 	void * pMVs = &MVs[0];
 	queue.enqueueReadBuffer(mvBuffer,CL_TRUE,0,sizeof(MotionVector) * mvImageWidth * mvImageHeight,pMVs,0,0);
+	queue.enqueueReadBuffer(res,CL_TRUE,0,sizeof(USHORT) * mvImageWidth * mvImageHeight,residuals,0,0);
     	
 }
 ME::~ME()
