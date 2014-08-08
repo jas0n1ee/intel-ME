@@ -53,7 +53,7 @@ ME::ME(int width,int height)
     CL_EXT_INIT_WITH_PLATFORM( init.platform, clReleaseAcceleratorINTEL );
 	cl_int err = 0;
     const cl_device_id & d = device();
-    cl::Program p (clCreateProgramWithBuiltInKernels( context(), 1, &d, "block_motion_estimate_intel", &err ));
+    p=cl::Program(clCreateProgramWithBuiltInKernels( context(), 1, &d, "block_motion_estimate_intel", &err ));
     /*
 	if (err != CL_SUCCESS)
     {
@@ -62,7 +62,7 @@ ME::ME(int width,int height)
 	*/
 	kernel=cl::Kernel(p,"block_motion_estimate_intel");
 	
-	cl_motion_estimation_desc_intel desc = {
+		cl_motion_estimation_desc_intel desc = {
         kMBBlockType,                                     // Number of motion vectors per source pixel block (the value of CL_ME_MB_TYPE_16x16_INTEL specifies  just a single vector per block )
 		subpixel_mode,                // Motion vector precision
 		sad_adjust_mode,              // SAD Adjust (none/Haar transform) for the residuals, but we don't compute them in this tutorial anyway
@@ -78,10 +78,10 @@ ME::ME(int width,int height)
 	*/
     ComputeNumMVs(desc.mb_block_type, width, height, mvImageWidth, mvImageHeight);
 	cl::ImageFormat imageFormat(CL_R, CL_UNORM_INT8);
-	cl::Image2D refImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
-	cl::Image2D srcImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
-    cl::Buffer mvBuffer(context, CL_MEM_WRITE_ONLY, mvImageWidth * mvImageHeight * sizeof(MotionVector));
-	cl::Buffer pmv(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(MotionVector));
+	refImage=cl::Image2D(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
+	srcImage=cl::Image2D(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
+    mvBuffer=cl::Buffer(context, CL_MEM_WRITE_ONLY, mvImageWidth * mvImageHeight * sizeof(MotionVector));
+	pmv=cl::Buffer(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(MotionVector));
 }
 void ME::ExtractMotionEstimation(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,bool preMVEnable)
 {

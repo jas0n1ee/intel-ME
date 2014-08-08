@@ -14,10 +14,10 @@
         } \
 };
 
-static const cl_uint kMBBlockType = CL_ME_MB_TYPE_8x8_INTEL;
+static const cl_uint kMBBlockType = CL_ME_MB_TYPE_16x16_INTEL;
 #define subpixel_mode		CL_ME_SUBPIXEL_MODE_QPEL_INTEL
 #define sad_adjust_mode		CL_ME_SAD_ADJUST_MODE_HAAR_INTEL
-#define search_path_type	CL_ME_SEARCH_PATH_RADIUS_4_4_INTEL
+#define search_path_type	CL_ME_SEARCH_PATH_RADIUS_16_12_INTEL
 
 
 CL_EXT_DECLARE( clCreateAcceleratorINTEL );
@@ -46,8 +46,10 @@ class ME
 		cl::Context context;
 		cl::Device device;
 		cl::CommandQueue queue;
+		cl::Program p;
 		cl::Kernel kernel;
 		cl_accelerator_intel accelerator;
+		cl_motion_estimation_desc_intel desc;
 		cl::Image2D refImage;
 		cl::Image2D srcImage;
 		cl::Buffer mvBuffer;
