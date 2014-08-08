@@ -17,7 +17,6 @@
 static const cl_uint kMBBlockType = CL_ME_MB_TYPE_16x16_INTEL;
 #define subpixel_mode		CL_ME_SUBPIXEL_MODE_QPEL_INTEL
 #define sad_adjust_mode		CL_ME_SAD_ADJUST_MODE_HAAR_INTEL
-#define search_path_type	CL_ME_SEARCH_PATH_RADIUS_16_12_INTEL
 
 
 CL_EXT_DECLARE( clCreateAcceleratorINTEL );
@@ -27,11 +26,11 @@ CL_EXT_DECLARE( clReleaseAcceleratorINTEL );
 #define SRC_BLOCK_HEIGHT 16
 
 typedef cl_short2 MotionVector;
-
+typedef unsigned char      uint8_t;
 class ME
 {
 	public:
-		ME(int width,int height);
+		ME(int width,int height,int searchPath);
 		~ME();
 		void ExtractMotionEstimation(void *,void *,
 				std::vector<MotionVector>& ,
@@ -39,7 +38,10 @@ class ME
 				bool);
 		void ComputeNumMVs( cl_uint nMBType, int nPicWidth, int nPicHeight, int & nMVSurfWidth, int & nMVSurfHeight );
 		unsigned int ComputeSubBlockSize( cl_uint nMBType );
-
+		void downsampling(void *src,void *det);
+		void resampling(void *src,void *det);
+		void resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det);
+		std::vector<MotionVector> moveMV(std::vector<MotionVector> src,int direction);
 	private:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
@@ -54,5 +56,4 @@ class ME
 		cl::Image2D srcImage;
 		cl::Buffer mvBuffer;
 		cl::Buffer pmv;
-		
 };	

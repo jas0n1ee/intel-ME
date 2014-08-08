@@ -35,7 +35,7 @@ unsigned int ME::ComputeSubBlockSize( cl_uint nMBType )
     }
 }
 
-ME::ME(int width,int height)
+ME::ME(int width,int height,int search_path)
 {
 	this->height=height;
 	this->width=width;
@@ -60,6 +60,16 @@ ME::ME(int width,int height)
         throw cl::Error(err, "Failed creating builtin kernel(s)");
     }
 	*/
+	cl_uint search_path_type;
+	switch(search_path){
+	case 2:search_path_type=0;
+		break;
+	case 4:search_path_type=1;
+		break;
+	case 16:search_path_type=5;
+		break;
+	default:search_path_type=0;
+	}
 	kernel=cl::Kernel(p,"block_motion_estimate_intel");
 	
 		cl_motion_estimation_desc_intel desc = {
@@ -119,4 +129,63 @@ void ME::ExtractMotionEstimation(void *src,void *ref,std::vector<MotionVector>& 
 ME::~ME()
 {
 	pfn_clReleaseAcceleratorINTEL(accelerator);
+}
+void ME::downsampling(void*s,void*d)
+{
+	uint8_t * src=(unsigned char *)s;
+	uint8_t * det=(unsigned char *)d;
+	int w2=width/2;
+	for(int i=0;i<height/2;i++)
+	{
+		for(int j=0;j<width/2;j++)
+		{
+			det[i*w2+j]=(src[i*2*width+j*2]+src[i*2*width+j*2+1]+src[(i*2+1)*width+j*2]+src[(i*2+1)*width+j*2+1]);
+		}
+	}
+}
+
+void ME::resampling(void*s,void*d)
+{
+	uint8_t * src=(unsigned char *)s;
+	uint8_t * det=(unsigned char *)d;
+	int w2=width/2;
+	for(int i=0;i<height/2;i++)
+	{
+		for(int j=0;j<width/2;j++)
+		{
+			det[2*i*width+j*2]=src[i*w2+j];
+			det[2*i*width+j*2+1]=src[i*w2+j];
+			det[(2*i+1)*width+j*2]=src[i*w2+j];
+			det[(2*i+1)*width+j*2+1]=src[i*w2+j];
+		}
+	}
+}
+void ME::resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det)
+{
+	int w2=mvImageWidth/2;
+	det.resize(mvImageHeight*mvImageWidth);
+	for(int i=0;i<mvImageHeight/2;i++)
+	{
+		for(int j=0;j<mvImageWidth/2;j++)
+		{
+			det[2*i*mvImageWidth+j*2].s[0]=src[i*w2+j].s[0]*2;
+			det[2*i*mvImageWidth+j*2].s[1]=src[i*w2+j].s[1]*2;
+			det[2*i*mvImageWidth+j*2+1].s[0]=src[i*w2+j].s[0]*2;
+			det[2*i*mvImageWidth+j*2+1].s[1]=src[i*w2+j].s[1]*2;
+			det[(2*i+1)*mvImageWidth+j*2].s[0]=src[i*w2+j].s[0]*2;
+			det[(2*i+1)*mvImageWidth+j*2].s[1]=src[i*w2+j].s[1]*2;
+			det[(2*i+1)*mvImageWidth+j*2+1].s[0]=src[i*w2+j].s[0];
+			det[(2*i+1)*mvImageWidth+j*2+1].s[1]=src[i*w2+j].s[1];
+		}
+	}
+}
+std::vector<MotionVector> ME::moveMV(std::vector<MotionVector> src,int direction)
+{
+	/*
+	1|2|3
+	4|0|6
+	7|8|9
+	*/
+	std::vector<MotionVector> result;
+	return result;
 }

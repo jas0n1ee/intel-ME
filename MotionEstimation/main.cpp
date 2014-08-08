@@ -153,43 +153,83 @@ int main( int argc, const char** argv )
 	const int height = cmd.height.getValue();
 	// Open input sequence
 	Capture * pCapture = Capture::CreateFileCapture(cmd.fileName.getValue(), width, height);
-
+	int numPics=pCapture->GetNumFrames();
 	// Process sequence
-	std::cout << "Processing " << pCapture->GetNumFrames() << " frames ..." << std::endl;
-	
+	std::cout << "Processing " << numPics << " frames ..." << std::endl;
+			
 	PlanarImage * refImage = CreatePlanarImage(width, height);
 	PlanarImage * srcImage = CreatePlanarImage(width, height);
-	PlanarImage * trdImage = CreatePlanarImage(width, height);
-	pCapture->GetSample(1,refImage);
-	pCapture->GetSample(2,srcImage);
-	pCapture->GetSample(3,trdImage);
-	std::vector<MotionVector> MV1;
-	std::vector<MotionVector> MV2;
-	ME me(width,height);
-	me.ExtractMotionEstimation(srcImage->Y,refImage->Y,MV1,(vector<MotionVector>)NULL,FALSE);
-	me.ExtractMotionEstimation(trdImage->Y,srcImage->Y,MV2,MV1,TRUE);
-
-	// Generate sequence with overlaid motion vectors
-	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
+	PlanarImage * d_2_1=CreatePlanarImage(width/2,height/2);
+	PlanarImage * d_2_2=CreatePlanarImage(width/2,height/2);
+	PlanarImage * d_4_1=CreatePlanarImage(width/4,height/4);
+	PlanarImage * d_4_2=CreatePlanarImage(width/4,height/4);
+	pCapture->GetSample(0,refImage);
+	pCapture->GetSample(1,srcImage);
 
 
+	ME me(width,height,4);
+	ME d2(width/2,height/2,16);
+	ME d4(width/4,height/4,4);
+	
 	int mvImageWidth, mvImageHeight;
 	me.ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
+
+	std::vector<MotionVector> MVs;
+	std::vector<MotionVector> MV_tmp;
+	std::vector<MotionVector> MV_tmp2;
+	std::vector<MotionVector> MV_ref;
+	MVs.resize(mvImageHeight*mvImageWidth);
+	MV_ref.resize(mvImageHeight*mvImageWidth);
+
+	double meTime=0;
+	double splTime=0;
+
+	double splStart=time_stamp();
+	me.downsampling(srcImage->Y,d_2_1->Y);
+	me.downsampling(refImage->Y,d_2_2->Y);
+	splTime+=time_stamp()-splStart;
+	
+	double meStart=time_stamp();
+	d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,(vector<MotionVector>)NULL,FALSE);
+	meTime+=time_stamp()-meStart;
+	
+	//d2.resampling(MV_tmp,MV_tmp2);
+	//d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,MV_tmp2,TRUE);
+	splStart=time_stamp();
+	me.resampling(MV_tmp,MVs);
+	splTime=time_stamp()-splStart;
+
+	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
 	unsigned int subBlockSize = me.ComputeSubBlockSize(kMBBlockType);
 
-	pCapture->GetSample(2, srcImage);
+	OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+	pWriter->AppendFrame(srcImage);
+
+	for(int i=2;i<numPics;i++)
+	{
+		std::swap(refImage,srcImage);
+		std::swap(MV_ref,MVs);	
+		pCapture->GetSample(i,srcImage);
+
+		meStart=time_stamp();
+		me.ExtractMotionEstimation(srcImage->Y,refImage->Y,MVs,MV_ref,TRUE);
+		meTime+=time_stamp()-meStart;
+
+		OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+		pWriter->AppendFrame(srcImage);
+	}
+	// Generate sequence with overlaid motion vectors
+
 	// Overlay MVs on Src picture, except the very first one
-	OverlayVectors(subBlockSize, &MV1[0], srcImage, mvImageWidth, mvImageHeight, width, height);
-	pWriter->AppendFrame(srcImage);
-	pCapture->GetSample(3, srcImage);
-	OverlayVectors(subBlockSize, &MV2[0], srcImage, mvImageWidth, mvImageHeight, width, height);
-	pWriter->AppendFrame(srcImage);
+	std::cout<<"Sample Time\t"<<1000*splTime<<"ms"<<std::endl;
+	std::cout<<"ME Time\t\t"<<1000*meTime/(numPics-1)<<"ms"<<std::endl;
 	std::cout << "Writing " << pCapture->GetNumFrames() << " frames to " << cmd.overlayFileName.getValue() << "..." << std::endl;
 	pWriter->WriteToFile(cmd.overlayFileName.getValue().c_str());
 
 	FrameWriter::Release(pWriter);
 	Capture::Release(pCapture);
 	ReleaseImage(srcImage);
+	ReleaseImage(refImage);
 
     std::cout << "Done!" << std::endl;
 
