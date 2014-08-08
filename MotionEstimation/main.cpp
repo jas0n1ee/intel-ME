@@ -31,43 +31,12 @@
 #include "yuv_utils.h"
 #include "cmdparser.hpp"
 #include "oclobject.hpp"
-
-#define CL_EXT_DECLARE(name) static name##_fn pfn_##name = 0;
-
-#define CL_EXT_INIT_WITH_PLATFORM(platform, name) { \
-    pfn_##name = (name##_fn) clGetExtensionFunctionAddressForPlatform(platform, #name); \
-    if (! pfn_##name ) \
-        { \
-        std::cout<<"ERROR: can't get handle to function pointer " <<#name<< ", wrong driver version?\n"; \
-        } \
-};
-
-static const cl_uint kMBBlockType = CL_ME_MB_TYPE_8x8_INTEL;
-#define subpixel_mode		CL_ME_SUBPIXEL_MODE_QPEL_INTEL
-#define sad_adjust_mode		CL_ME_SAD_ADJUST_MODE_HAAR_INTEL
-#define search_path_type	CL_ME_SEARCH_PATH_RADIUS_4_4_INTEL
-
-
-CL_EXT_DECLARE( clCreateAcceleratorINTEL );
-CL_EXT_DECLARE( clReleaseAcceleratorINTEL );
-
+#include "ME.h"
 using namespace YUVUtils;
-
-// these values define dimensions of input pixel blocks (whcih are fixed in hardware)
-// so, do not change these values to avoid errors
-#define SRC_BLOCK_WIDTH 16
-#define SRC_BLOCK_HEIGHT 16
-
-typedef cl_short2 MotionVector;
-
-// Specifies number of motion vectors per source pixel block (the value of CL_ME_MB_TYPE_16x16_INTEL specifies  just a single vector per block )
-
 #ifdef _MSC_VER
 #pragma warning (push)
 #pragma warning (disable : 4355)    // 'this': used in base member initializer list
 #endif
-
-
 // All command-line options for the sample
 class CmdParserMV : public CmdParser
 {
@@ -101,254 +70,6 @@ public:
 #ifdef _MSC_VER
 #pragma warning (pop)
 #endif
-
-inline void ComputeNumMVs( cl_uint nMBType, int nPicWidth, int nPicHeight, int & nMVSurfWidth, int & nMVSurfHeight )
-{
-    // Size of the input frame in pixel blocks (SRC_BLOCK_WIDTH x SRC_BLOCK_HEIGHT each)
-    int nPicWidthInBlk  = (nPicWidth + SRC_BLOCK_WIDTH - 1) / SRC_BLOCK_WIDTH;
-    int nPicHeightInBlk = (nPicHeight + SRC_BLOCK_HEIGHT - 1) / SRC_BLOCK_HEIGHT;
-
-    if (CL_ME_MB_TYPE_4x4_INTEL == nMBType) {         // Each Src block has 4x4 MVs
-        nMVSurfWidth = nPicWidthInBlk * 4;
-        nMVSurfHeight = nPicHeightInBlk * 4;
-    }
-    else if (CL_ME_MB_TYPE_8x8_INTEL == nMBType) {    // Each Src block has 2x2 MVs
-        nMVSurfWidth = nPicWidthInBlk * 2;
-        nMVSurfHeight = nPicHeightInBlk * 2;
-    }
-    else if (CL_ME_MB_TYPE_16x16_INTEL == nMBType) {  // Each Src block has 1 MV
-        nMVSurfWidth = nPicWidthInBlk;
-        nMVSurfHeight = nPicHeightInBlk;
-    }
-    else
-    {
-        throw std::runtime_error("Unknown macroblock type");
-    }
-}
-
-inline unsigned int ComputeSubBlockSize( cl_uint nMBType )
-{
-    switch (nMBType)
-    {
-    case CL_ME_MB_TYPE_4x4_INTEL: return 4;
-    case CL_ME_MB_TYPE_8x8_INTEL: return 8;
-    case CL_ME_MB_TYPE_16x16_INTEL: return 16;
-    default:
-        throw std::runtime_error("Unknown macroblock type");
-    }
-}
-void MotionEstimation( void *src,void *ref, std::vector<MotionVector> & MVs,std::vector<MotionVector>& preMVs,bool preMVEnable, const int width,const int height)
-{
-
-    // OpenCL initialization
-    OpenCLBasic init("Intel", "GPU");
-    //OpenCLBasic creates the platform/context and device for us, so all we need is to get an ownership (via incrementing ref counters with clRetainXXX)
-
-    cl::Context context = cl::Context(init.context); clRetainContext(init.context);
-    cl::Device device  = cl::Device(init.device);   clRetainDevice(init.device);
-    cl::CommandQueue queue = cl::CommandQueue(init.queue);clRetainCommandQueue(init.queue);
-
-    std::string ext = device.getInfo< CL_DEVICE_EXTENSIONS >();
-    if (string::npos == ext.find("cl_intel_accelerator") || string::npos == ext.find("cl_intel_motion_estimation"))
-    {
-        throw Error("Error, the selected device doesn't support motion estimation or accelerator extensions!");
-    }
-
-    CL_EXT_INIT_WITH_PLATFORM( init.platform, clCreateAcceleratorINTEL );
-    CL_EXT_INIT_WITH_PLATFORM( init.platform, clReleaseAcceleratorINTEL );
-
-    // Create a built-in VME kernel
-    cl_int err = 0;
-    const cl_device_id & d = device();
-    cl::Program p (clCreateProgramWithBuiltInKernels( context(), 1, &d, "block_motion_estimate_intel", &err ));
-    if (err != CL_SUCCESS)
-    {
-        throw cl::Error(err, "Failed creating builtin kernel(s)");
-    }
-    cl::Kernel kernel(p, "block_motion_estimate_intel");
-
-    // VME API configuration knobs
-    cl_motion_estimation_desc_intel desc = {
-        kMBBlockType,                                     // Number of motion vectors per source pixel block (the value of CL_ME_MB_TYPE_16x16_INTEL specifies  just a single vector per block )
-		subpixel_mode,                // Motion vector precision
-		sad_adjust_mode,              // SAD Adjust (none/Haar transform) for the residuals, but we don't compute them in this tutorial anyway
-		search_path_type              // Search window radius
-    };
-
-    // Create an accelerator object (abstraction of the motion estimation acceleration engine)
-    cl_accelerator_intel accelerator = pfn_clCreateAcceleratorINTEL(context(), CL_ACCELERATOR_TYPE_MOTION_ESTIMATION_INTEL,
-        sizeof(cl_motion_estimation_desc_intel), &desc, &err);
-    if (err != CL_SUCCESS)
-    {
-        throw cl::Error(err, "Error creating motion estimation accelerator object.");
-    }
-
-    int mvImageWidth, mvImageHeight;
-    ComputeNumMVs(desc.mb_block_type, width, height, mvImageWidth, mvImageHeight);
-    MVs.resize(mvImageWidth * mvImageHeight);		//Vector size 
-    // Set up OpenCL surfaces
-    cl::ImageFormat imageFormat(CL_R, CL_UNORM_INT8);
-	cl::Image2D refImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
-	cl::Image2D srcImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0,0);
-    cl::Buffer mvBuffer(context, CL_MEM_WRITE_ONLY, mvImageWidth * mvImageHeight * sizeof(MotionVector));
-	cl::Buffer pmv(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(MotionVector));
-	
-
-    // Bootstrap video sequence reading
-    PlanarImage * currImage = CreatePlanarImage(width, height);
-
-    cl::size_t<3> origin;
-    origin[0] = 0;
-    origin[1] = 0;
-    origin[2] = 0;
-    cl::size_t<3> region;
-    region[0] = width;
-    region[1] = height;
-    region[2] = 1;
-
-	queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
-    // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
-	queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
-	// Load next picture
-	// Schedule full-frame motion estimation
-	kernel.setArg(0, accelerator);
-	kernel.setArg(1, srcImage);
-	kernel.setArg(2, refImage);
-	if(preMVEnable) 
-	{
-		queue.enqueueWriteBuffer(pmv,CL_TRUE,0,sizeof(MotionVector) * mvImageHeight*mvImageWidth,&preMVs[0],0,0); 
-		kernel.setArg(3, pmv);
-	}
-	else kernel.setArg(3, sizeof(cl_mem), NULL);
-	kernel.setArg(4, mvBuffer);
-	kernel.setArg(5, sizeof(cl_mem), NULL); //in this simple tutorial we don't want to compute residuals
-	queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(width, height), cl::NullRange);
-	queue.finish();
-	// Read back resulting motion vectors (in a sync way)
-	void * pMVs = &MVs[0];
-	//
-	queue.enqueueReadBuffer(mvBuffer,CL_TRUE,0,sizeof(MotionVector) * mvImageWidth * mvImageHeight,pMVs,0,0);
-    std::cout << std::setiosflags(std::ios_base::fixed) << std::setprecision(3);
-    pfn_clReleaseAcceleratorINTEL(accelerator);
-    ReleaseImage(currImage);
-}
-void ExtractMotionVectorsFullFrameWithOpenCL( Capture * pCapture, std::vector<MotionVector> & MVs, const CmdParserMV& cmd)
-{
-
-    // OpenCL initialization
-    OpenCLBasic init("Intel", "GPU");
-    //OpenCLBasic creates the platform/context and device for us, so all we need is to get an ownership (via incrementing ref counters with clRetainXXX)
-
-    cl::Context context = cl::Context(init.context); clRetainContext(init.context);
-    cl::Device device  = cl::Device(init.device);   clRetainDevice(init.device);
-    cl::CommandQueue queue = cl::CommandQueue(init.queue);clRetainCommandQueue(init.queue);
-
-    std::string ext = device.getInfo< CL_DEVICE_EXTENSIONS >();
-    if (string::npos == ext.find("cl_intel_accelerator") || string::npos == ext.find("cl_intel_motion_estimation"))
-    {
-        throw Error("Error, the selected device doesn't support motion estimation or accelerator extensions!");
-    }
-
-    CL_EXT_INIT_WITH_PLATFORM( init.platform, clCreateAcceleratorINTEL );
-    CL_EXT_INIT_WITH_PLATFORM( init.platform, clReleaseAcceleratorINTEL );
-
-    // Create a built-in VME kernel
-    cl_int err = 0;
-    const cl_device_id & d = device();
-    cl::Program p (clCreateProgramWithBuiltInKernels( context(), 1, &d, "block_motion_estimate_intel", &err ));
-    if (err != CL_SUCCESS)
-    {
-        throw cl::Error(err, "Failed creating builtin kernel(s)");
-    }
-    cl::Kernel kernel(p, "block_motion_estimate_intel");
-
-    // VME API configuration knobs
-    cl_motion_estimation_desc_intel desc = {
-        kMBBlockType,                                     // Number of motion vectors per source pixel block (the value of CL_ME_MB_TYPE_16x16_INTEL specifies  just a single vector per block )
-		subpixel_mode,                // Motion vector precision
-		sad_adjust_mode,                 // SAD Adjust (none/Haar transform) for the residuals, but we don't compute them in this tutorial anyway
-		search_path_type              // Search window radius
-    };
-
-    // Create an accelerator object (abstraction of the motion estimation acceleration engine)
-    cl_accelerator_intel accelerator = pfn_clCreateAcceleratorINTEL(context(), CL_ACCELERATOR_TYPE_MOTION_ESTIMATION_INTEL,
-        sizeof(cl_motion_estimation_desc_intel), &desc, &err);
-    if (err != CL_SUCCESS)
-    {
-        throw cl::Error(err, "Error creating motion estimation accelerator object.");
-    }
-
-    const int numPics = pCapture->GetNumFrames();
-    const int width = cmd.width.getValue();
-    const int height = cmd.height.getValue();
-    int mvImageWidth, mvImageHeight;
-    ComputeNumMVs(desc.mb_block_type, width, height, mvImageWidth, mvImageHeight);
-    MVs.resize(numPics * mvImageWidth * mvImageHeight);
-
-    // Set up OpenCL surfaces
-    cl::ImageFormat imageFormat(CL_R, CL_UNORM_INT8);
-    cl::Image2D refImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0, 0);
-    cl::Image2D srcImage(context, CL_MEM_READ_ONLY, imageFormat, width, height, 0, 0);
-    cl::Buffer mvBuffer(context, CL_MEM_WRITE_ONLY, mvImageWidth * mvImageHeight * sizeof(MotionVector));
-
-    // Bootstrap video sequence reading
-    PlanarImage * currImage = CreatePlanarImage(width, height);
-    pCapture->GetSample(0, currImage);
-    cl::size_t<3> origin;
-    origin[0] = 0;
-    origin[1] = 0;
-    origin[2] = 0;
-    cl::size_t<3> region;
-    region[0] = width;
-    region[1] = height;
-    region[2] = 1;
-    // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
-    queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, currImage->PitchY, 0, currImage->Y);
-
-    // Process all frames
-    double ioStat = 0;//file i/o
-    double meStat = 0;//motion estimation itself
-
-    double overallStart  = time_stamp();
-    // First frame is already in srcImg, so we start with the second frame
-    for (int i = 1; i < numPics; i++)
-    {
-        double ioStart = time_stamp();
-        // Load next picture
-        pCapture->GetSample(i, currImage);
-
-        std::swap(refImage, srcImage);
-        // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
-        queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, currImage->PitchY, 0, currImage->Y);
-        ioStat += (time_stamp() -ioStart);
-
-        double meStart = time_stamp();
-        // Schedule full-frame motion estimation
-        kernel.setArg(0, accelerator);
-        kernel.setArg(1, srcImage);
-        kernel.setArg(2, refImage);
-        kernel.setArg(3, sizeof(cl_mem), NULL);//in this simple tutorial we have no "prediction" vectors for the input (often, the motion vectors from downscaled image or from the prev. frame are used)
-        kernel.setArg(4, mvBuffer);
-        kernel.setArg(5, sizeof(cl_mem), NULL); //in this simple tutorial we don't want to compute residuals
-        queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(width, height), cl::NullRange);
-        queue.finish();
-        meStat += (time_stamp() - meStart);
-
-        ioStart = time_stamp();
-        // Read back resulting motion vectors (in a sync way)
-        void * pMVs = &MVs[i * mvImageWidth * mvImageHeight];
-        queue.enqueueReadBuffer(mvBuffer,CL_TRUE,0,sizeof(MotionVector) * mvImageWidth * mvImageHeight,pMVs,0,0);
-        ioStat += (time_stamp() -ioStart);
-    }
-    double overallStat  = time_stamp() - overallStart;
-    std::cout << std::setiosflags(std::ios_base::fixed) << std::setprecision(3);
-    std::cout << "Overall time for " << numPics << " frames " << overallStat << " sec\n" ;
-    std::cout << "Average frame file I/O time per frame " << 1000*ioStat/numPics << " ms\n";
-    std::cout << "Average Motion Estimation time per frame is " << 1000*meStat/numPics << " ms\n";
-
-    pfn_clReleaseAcceleratorINTEL(accelerator);
-    ReleaseImage(currImage);
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Overlay routines
@@ -444,16 +165,17 @@ int main( int argc, const char** argv )
 	pCapture->GetSample(3,trdImage);
 	std::vector<MotionVector> MV1;
 	std::vector<MotionVector> MV2;
-	MotionEstimation(srcImage->Y,refImage->Y,MV1,(vector<MotionVector>)NULL,FALSE,width,height);
-	MotionEstimation(trdImage->Y,srcImage->Y,MV2,MV1,TRUE,width,height);
+	ME me(width,height);
+	me.ExtractMotionEstimation(srcImage->Y,refImage->Y,MV1,(vector<MotionVector>)NULL,FALSE);
+	me.ExtractMotionEstimation(trdImage->Y,srcImage->Y,MV2,MV1,TRUE);
 
 	// Generate sequence with overlaid motion vectors
 	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
 
 
 	int mvImageWidth, mvImageHeight;
-	ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
-	unsigned int subBlockSize = ComputeSubBlockSize(kMBBlockType);
+	me.ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
+	unsigned int subBlockSize = me.ComputeSubBlockSize(kMBBlockType);
 
 	pCapture->GetSample(2, srcImage);
 	// Overlay MVs on Src picture, except the very first one
