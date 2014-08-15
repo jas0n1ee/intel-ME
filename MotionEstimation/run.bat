@@ -1,3 +1,1 @@
-Win32\Debug\MotionEstimation.exe --input Cobra_3840x2160_15frames.yuv --output output.yuv --width 3840 --height 2160 >log.txt
-
-pause
+Win32\Debug\MotionEstimation.exe --input video_1920x1080_5frames.yuv --output output.yuv --width 1920 --height 1080 >log.txt

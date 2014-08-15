@@ -52,10 +52,10 @@ public:
     CmdParser(argc, argv),
         out_to_bmp(*this,		'b',"nobmp","","Do not output frames to the sequence of bmp files (in addition to the yuv file), by default the output is on", ""),
         help(*this,				'h',"help","","Show this help text and exit."),
-        fileName(*this,			0,"input", "string", "Input video sequence filename (.yuv file format)","video_1920x1080_5frames.yuv"),
+        fileName(*this,			0,"input", "string", "Input video sequence filename (.yuv file format)","Cobra_3840x2160_15frames.yuv"),
         overlayFileName(*this,	0,"output","string", "Output video sequence with overlaid motion vectors filename ","output.yuv"),
-        width(*this,			0, "width",	"<integer>", "Frame width for the input file", 1920),
-        height(*this,			0, "height","<integer>", "Frame height for the input file",1080)
+        width(*this,			0, "width",	"<integer>", "Frame width for the input file", 3840),
+        height(*this,			0, "height","<integer>", "Frame height for the input file",2160)
     {
     }
     virtual void parse ()
@@ -167,7 +167,9 @@ int main( int argc, const char** argv )
 	pCapture->GetSample(1,srcImage);
 
 
-	ME me(width,height,4);
+	ME me(width,height,16);
+	ME me4(width,height,4);
+	ME me16(width,height,16);
 	ME d2(width/2,height/2,16);
 	ME d4(width/4,height/4,4);
 	
@@ -190,7 +192,7 @@ int main( int argc, const char** argv )
 	splTime+=time_stamp()-splStart;
 	
 	double meStart=time_stamp();
-	d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,(vector<MotionVector>)NULL,FALSE);
+	d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,(vector<MotionVector>)NULL,NULL,FALSE);
 	meTime+=time_stamp()-meStart;
 	
 	//d2.resampling(MV_tmp,MV_tmp2);
@@ -198,6 +200,9 @@ int main( int argc, const char** argv )
 	splStart=time_stamp();
 	me.resampling(MV_tmp,MVs);
 	splTime=time_stamp()-splStart;
+	std::swap(MV_ref,MVs);	
+	compare(srcImage->Y,refImage->Y,MVs,MV_ref,me4,me16);
+	//me.costfunction(srcImage->Y,refImage->Y,MVs,MV_ref);
 
 	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
 	unsigned int subBlockSize = me.ComputeSubBlockSize(kMBBlockType);
@@ -212,7 +217,9 @@ int main( int argc, const char** argv )
 		pCapture->GetSample(i,srcImage);
 
 		meStart=time_stamp();
-		me.ExtractMotionEstimation(srcImage->Y,refImage->Y,MVs,MV_ref,TRUE);
+
+		compare(srcImage->Y,refImage->Y,MVs,MV_ref,me4,me16);
+		//me.costfunction(srcImage->Y,refImage->Y,MVs,MV_ref);
 		meTime+=time_stamp()-meStart;
 
 		OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);

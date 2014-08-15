@@ -5,7 +5,7 @@
 #include <CL/cl_ext.h>
 #include "oclobject.hpp"
 #define CL_EXT_DECLARE(name) static name##_fn pfn_##name = 0;
-
+#define lambda 500;
 #define CL_EXT_INIT_WITH_PLATFORM(platform, name) { \
     pfn_##name = (name##_fn) clGetExtensionFunctionAddressForPlatform(platform, #name); \
     if (! pfn_##name ) \
@@ -35,6 +35,7 @@ class ME
 		void ExtractMotionEstimation(void *,void *,
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& ,
+				USHORT*,
 				bool);
 		void ComputeNumMVs( cl_uint nMBType, int nPicWidth, int nPicHeight, int & nMVSurfWidth, int & nMVSurfHeight );
 		unsigned int ComputeSubBlockSize( cl_uint nMBType );
@@ -42,9 +43,14 @@ class ME
 		void resampling(void *src,void *det);
 		void resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det);
 		std::vector<MotionVector> moveMV(std::vector<MotionVector> src,int direction);
-	private:
+		void costfunction(void *,void *,
+				std::vector<MotionVector>& ,
+				std::vector<MotionVector>& );
+		friend void compare(void *,void *,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
+	protected:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
+	private:
 		cl::Context context;
 		cl::Device device;
 		cl::CommandQueue queue;
@@ -57,4 +63,5 @@ class ME
 		cl::Buffer mvBuffer;
 		cl::Buffer pmv;
 		cl::Buffer res;
+		
 };	
