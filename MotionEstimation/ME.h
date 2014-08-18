@@ -5,7 +5,7 @@
 #include <CL/cl_ext.h>
 #include "oclobject.hpp"
 #define CL_EXT_DECLARE(name) static name##_fn pfn_##name = 0;
-#define lambda 500;
+#define lambda 400;
 #define CL_EXT_INIT_WITH_PLATFORM(platform, name) { \
     pfn_##name = (name##_fn) clGetExtensionFunctionAddressForPlatform(platform, #name); \
     if (! pfn_##name ) \
@@ -30,9 +30,15 @@ typedef unsigned char      uint8_t;
 class ME
 {
 	public:
+		ME();
 		ME(int width,int height,int searchPath);
 		~ME();
-		void ExtractMotionEstimation(void *,void *,
+		void ExtractMotionEstimation(cl::Image2D,cl::Image2D,
+				std::vector<MotionVector>& ,
+				std::vector<MotionVector>& ,
+				USHORT*,
+				bool);
+		void ExtractMotionEstimation_b(void *,void *,
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& ,
 				USHORT*,
@@ -47,13 +53,13 @@ class ME
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& );
 		friend void compare(void *,void *,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
-	protected:
+		friend void PyramidME(void *,void *,std::vector<MotionVector>& ,ME &me, int );
+	private:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
-	private:
+		cl::CommandQueue queue;
 		cl::Context context;
 		cl::Device device;
-		cl::CommandQueue queue;
 		cl::Program p;
 		cl::Kernel kernel;
 		cl_accelerator_intel accelerator;

@@ -163,6 +163,7 @@ int main( int argc, const char** argv )
 	PlanarImage * d_2_2=CreatePlanarImage(width/2,height/2);
 	PlanarImage * d_4_1=CreatePlanarImage(width/4,height/4);
 	PlanarImage * d_4_2=CreatePlanarImage(width/4,height/4);
+	//remember to release!!!!!!!!!!!!!!
 	pCapture->GetSample(0,refImage);
 	pCapture->GetSample(1,srcImage);
 
@@ -170,7 +171,7 @@ int main( int argc, const char** argv )
 	ME me(width,height,16);
 	ME me4(width,height,4);
 	ME me16(width,height,16);
-	ME d2(width/2,height/2,16);
+	ME d2(width/2,height/2,4);
 	ME d4(width/4,height/4,4);
 	
 	int mvImageWidth, mvImageHeight;
@@ -192,7 +193,7 @@ int main( int argc, const char** argv )
 	splTime+=time_stamp()-splStart;
 	
 	double meStart=time_stamp();
-	d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,(vector<MotionVector>)NULL,NULL,FALSE);
+	d2.ExtractMotionEstimation_b(d_2_1->Y,d_2_2->Y,MV_tmp,(vector<MotionVector>)NULL,NULL,FALSE);
 	meTime+=time_stamp()-meStart;
 	
 	//d2.resampling(MV_tmp,MV_tmp2);

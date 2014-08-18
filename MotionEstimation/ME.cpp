@@ -1,6 +1,7 @@
 #include "ME.h"
 #include <CL/cl.h>
 #include <cmath>
+#include "yuv_utils.h"
 void ME::ComputeNumMVs( cl_uint nMBType, int nPicWidth, int nPicHeight, int & nMVSurfWidth, int & nMVSurfHeight )
 {
     // Size of the input frame in pixel blocks (SRC_BLOCK_WIDTH x SRC_BLOCK_HEIGHT each)
@@ -35,7 +36,9 @@ unsigned int ME::ComputeSubBlockSize( cl_uint nMBType )
         throw std::runtime_error("Unknown macroblock type");
     }
 }
-
+ME::ME()
+{
+}
 ME::ME(int width,int height,int search_path)
 {
 	this->height=height;
@@ -95,7 +98,32 @@ ME::ME(int width,int height,int search_path)
 	pmv=cl::Buffer(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(MotionVector));
 	res=cl::Buffer(context, CL_MEM_READ_WRITE, mvImageWidth * mvImageHeight * sizeof(USHORT));
 }
-void ME::ExtractMotionEstimation(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,USHORT * residuals,bool preMVEnable)
+void ME::ExtractMotionEstimation(cl::Image2D refImage,cl::Image2D srcImage,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,USHORT * residuals,bool preMVEnable)
+{
+	MVs.resize(mvImageWidth * mvImageHeight);
+	// Load next picture
+	// Schedule full-frame motion estimation
+	kernel.setArg(0, accelerator);
+	kernel.setArg(1, srcImage);
+	kernel.setArg(2, refImage);
+	if(preMVEnable) 
+	{
+		queue.enqueueWriteBuffer(pmv,CL_TRUE,0,sizeof(MotionVector) * mvImageHeight*mvImageWidth,&preMVs[0],0,0); 
+		kernel.setArg(3, pmv);
+	}
+	else kernel.setArg(3, sizeof(cl_mem), NULL);
+	kernel.setArg(4, mvBuffer);
+
+	kernel.setArg(5, res); //in this simple tutorial we don't want to compute residuals
+
+	queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(width, height), cl::NullRange);
+	queue.finish();
+	void * pMVs = &MVs[0];
+	queue.enqueueReadBuffer(mvBuffer,CL_TRUE,0,sizeof(MotionVector) * mvImageWidth * mvImageHeight,pMVs,0,0);
+	queue.enqueueReadBuffer(res,CL_TRUE,0,sizeof(USHORT) * mvImageWidth * mvImageHeight,residuals,0,0);
+    	
+}
+void ME::ExtractMotionEstimation_b(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,USHORT * residuals,bool preMVEnable)
 {
     cl::size_t<3> origin;
     origin[0] = 0;
@@ -186,6 +214,18 @@ void ME::resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det)
 }
 void ME::costfunction(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs)
 {
+    cl::size_t<3> origin;
+    origin[0] = 0;
+    origin[1] = 0;
+    origin[2] = 0;
+    cl::size_t<3> region;
+	region[0] = width;
+    region[1] = height;
+    region[2] = 1;
+	MVs.resize(mvImageWidth * mvImageHeight);
+	queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+    // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
+	queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
 	USHORT * pre_res = new USHORT[mvImageHeight*mvImageWidth];
 	USHORT * non_res = new USHORT[mvImageHeight*mvImageWidth];
 	std::vector<MotionVector> MV_pre;
@@ -196,8 +236,8 @@ void ME::costfunction(void *src,void *ref,std::vector<MotionVector>& MVs,std::ve
 	std::vector<MotionVector> MV_d;
 	int pre[2];
 	int non[2];
-	ExtractMotionEstimation(src,ref,MV_pre,preMVs,pre_res,TRUE);
-	ExtractMotionEstimation(src,ref,MV_non,preMVs,non_res,FALSE);
+	ExtractMotionEstimation(refImage,srcImage,MV_pre,preMVs,pre_res,TRUE);
+	ExtractMotionEstimation(refImage,srcImage,MV_non,preMVs,non_res,FALSE);
 	MVs.resize(mvImageHeight*mvImageWidth);
 	for(int i=0;i<mvImageHeight*mvImageWidth;i++)
 	{
@@ -311,6 +351,19 @@ std::vector<MotionVector> ME::moveMV(std::vector<MotionVector> src,int direction
 }
 void compare(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,ME &me4,ME &me16)
 {
+    cl::size_t<3> origin;
+    origin[0] = 0;
+    origin[1] = 0;
+    origin[2] = 0;
+    cl::size_t<3> region;
+	region[0] = me4.width;
+    region[1] = me4.height;
+    region[2] = 1;
+	cl::Image2D refImage(me16.refImage);
+	cl::Image2D srcImage(me16.srcImage);
+	me4.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+    // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
+	me4.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
 	int mvImageHeight=me4.mvImageHeight;
 	int mvImageWidth=me4.mvImageWidth;
 	USHORT * pre4_res = new USHORT[mvImageHeight*mvImageWidth];
@@ -325,9 +378,9 @@ void compare(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<Moti
 	int pre4[2];
 	int pre16[2];
 	int non[2];
-	me4.ExtractMotionEstimation(src,ref,MV_pre4,preMVs,pre4_res,TRUE);
-	me16.ExtractMotionEstimation(src,ref,MV_pre16,preMVs,pre16_res,TRUE);
-	me4.ExtractMotionEstimation(src,ref,MV_non,preMVs,non_res,FALSE);
+	me4.ExtractMotionEstimation(refImage,srcImage,MV_pre4,preMVs,pre4_res,TRUE);
+	me16.ExtractMotionEstimation(refImage,srcImage,MV_pre16,preMVs,pre16_res,TRUE);
+	me4.ExtractMotionEstimation(refImage,srcImage,MV_non,preMVs,non_res,FALSE);
 	MVs.resize(mvImageHeight*mvImageWidth);
 	for(int i=0;i<mvImageHeight*mvImageWidth;i++)
 	{
@@ -344,8 +397,39 @@ void compare(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<Moti
 		int cost_pre4=pre4_res[i]+ MVbit_pre4 * lambda;
 		int cost_pre16=pre16_res[i]+ MVbit_pre16 * lambda;
 		int cost_non=non_res[i]+ MVbit_non * lambda;
-		//std::cout<<cost_non<<"\t"<<cost_pre4<<"\t"<<cost_pre16<<"\t"<<MVbit_non<<"\t"<<MVbit_pre4<<"\t"<<MVbit_pre16<<"\n";
+//		std::cout<<cost_non<<"\t"<<cost_pre4<<"\t"<<cost_pre16<<"\t"
+//				<<non_res[i]<<"\t"<<pre4_res[i]<<"\t"<<pre16_res[i]<<"\t"<<MVbit_non<<"\t"<<MVbit_pre4<<"\t"<<MVbit_pre16<<"\n";
 		MVs[i]=(cost_pre4>cost_non)?
 			((cost_non>cost_pre16)?MV_pre16[i]:MV_non[i]):MV_pre4[i];
 	}
 }
+void PyramidME(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me, int Layers)
+{
+	std::vector<ME> Pyramid;
+	std::vector<YUVUtils::PlanarImage *>ref_l;
+	std::vector<YUVUtils::PlanarImage *>src_l;
+	int width=me.width;
+	int height=me.height;
+	Pyramid.resize(Layers*sizeof(ME));
+	ref_l.resize(Layers*sizeof(YUVUtils::PlanarImage));
+	src_l.resize(Layers*sizeof(YUVUtils::PlanarImage));
+
+	Pyramid[0]=ME(me);
+
+	Pyramid[1]=ME(width/pow(2,1),height/pow(2,1),4);
+	ref_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
+	src_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
+	Pyramid[1].downsampling(src,src_l[1]->Y);
+	Pyramid[1].downsampling(ref,ref_l[1]->Y);
+
+	for(int i=2;i<Layers;i++)
+	{
+		Pyramid[i]=ME(width/pow(2,i),height/pow(2,i),4);
+		ref_l[i]=YUVUtils::CreatePlanarImage(width/pow(2,i),height/pow(2,i));
+		src_l[i]=YUVUtils::CreatePlanarImage(width/pow(2,i),height/pow(2,i));
+		Pyramid[i].downsampling(src_l[i-1]->Y,src_l[i]->Y);
+		Pyramid[i].downsampling(ref_l[i-1]->Y,ref_l[i]->Y);
+	}
+}
+
+
