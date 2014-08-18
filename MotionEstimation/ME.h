@@ -4,6 +4,7 @@
 #include <CL/cl.hpp>
 #include <CL/cl_ext.h>
 #include "oclobject.hpp"
+#include "yuv_utils.h"
 #define CL_EXT_DECLARE(name) static name##_fn pfn_##name = 0;
 #define lambda 500;
 #define CL_EXT_INIT_WITH_PLATFORM(platform, name) { \
@@ -30,6 +31,7 @@ typedef unsigned char      uint8_t;
 class ME
 {
 	public:
+		ME(){};
 		ME(int width,int height,int searchPath);
 		~ME();
 		void ExtractMotionEstimation(void *,void *,
@@ -47,10 +49,10 @@ class ME
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& );
 		friend void compare(void *,void *,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
-	protected:
+		friend void PyramidME(void *,void *,std::vector<MotionVector>& ,ME &me, int );
+	private:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
-	private:
 		cl::Context context;
 		cl::Device device;
 		cl::CommandQueue queue;

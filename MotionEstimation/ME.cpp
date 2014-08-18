@@ -349,3 +349,32 @@ void compare(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<Moti
 			((cost_non>cost_pre16)?MV_pre16[i]:MV_non[i]):MV_pre4[i];
 	}
 }
+
+void PyramidME(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me, int Layers)
+{
+	std::vector<ME> Pyramid;
+	std::vector<YUVUtils::PlanarImage *>ref_l;
+	std::vector<YUVUtils::PlanarImage *>src_l;
+	int width=me.width;
+	int height=me.height;
+	Pyramid.resize(Layers*sizeof(ME));
+	ref_l.resize(Layers*sizeof(YUVUtils::PlanarImage));
+	src_l.resize(Layers*sizeof(YUVUtils::PlanarImage));
+
+	Pyramid[0]=ME(me);
+
+	Pyramid[1]=ME(width/pow(2,1),height/pow(2,1),4);
+	ref_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
+	src_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
+	Pyramid[1].downsampling(src,src_l[1]->Y);
+	Pyramid[1].downsampling(ref,ref_l[1]->Y);
+
+	for(int i=2;i<Layers;i++)
+	{
+		Pyramid[i]=ME(width/pow(2,i),height/pow(2,i),4);
+		ref_l[i]=YUVUtils::CreatePlanarImage(width/pow(2,i),height/pow(2,i));
+		src_l[i]=YUVUtils::CreatePlanarImage(width/pow(2,i),height/pow(2,i));
+		Pyramid[i].downsampling(src_l[i-1]->Y,src_l[i]->Y);
+		Pyramid[i].downsampling(ref_l[i-1]->Y,ref_l[i]->Y);
+	}
+}
