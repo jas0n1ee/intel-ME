@@ -359,11 +359,10 @@ void compare(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<Moti
 	region[0] = me4.width;
     region[1] = me4.height;
     region[2] = 1;
-	cl::Image2D refImage(me16.refImage);
-	cl::Image2D srcImage(me16.srcImage);
-	me4.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
-    // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
-	me4.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+	cl::Image2D refImage(me4.refImage);
+	cl::Image2D srcImage(me4.srcImage);
+
+
 	int mvImageHeight=me4.mvImageHeight;
 	int mvImageWidth=me4.mvImageWidth;
 	USHORT * pre4_res = new USHORT[mvImageHeight*mvImageWidth];
@@ -378,9 +377,26 @@ void compare(void *src,void *ref,std::vector<MotionVector>& MVs,std::vector<Moti
 	int pre4[2];
 	int pre16[2];
 	int non[2];
+	double cp_time=time_stamp();
+	me4.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+	me4.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+	std::cout<<"cp time\t"<<1000*(time_stamp()-cp_time)<<"\n";
 	me4.ExtractMotionEstimation(refImage,srcImage,MV_pre4,preMVs,pre4_res,TRUE);
-	me16.ExtractMotionEstimation(refImage,srcImage,MV_pre16,preMVs,pre16_res,TRUE);
+	
+	cp_time=time_stamp();
+	//me4.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+	//me4.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+	std::cout<<"cp time\t"<<1000*(time_stamp()-cp_time)<<"\n";
 	me4.ExtractMotionEstimation(refImage,srcImage,MV_non,preMVs,non_res,FALSE);
+
+	refImage=me16.refImage;
+	srcImage=me16.srcImage;
+	cp_time=time_stamp();
+	me16.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+	me16.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+	std::cout<<"cp time\t"<<1000*(time_stamp()-cp_time)<<"\n";
+	me16.ExtractMotionEstimation(refImage,srcImage,MV_pre16,preMVs,pre16_res,TRUE);
+
 	MVs.resize(mvImageHeight*mvImageWidth);
 	for(int i=0;i<mvImageHeight*mvImageWidth;i++)
 	{
