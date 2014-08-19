@@ -159,10 +159,6 @@ int main( int argc, const char** argv )
 			
 	PlanarImage * refImage = CreatePlanarImage(width, height);
 	PlanarImage * srcImage = CreatePlanarImage(width, height);
-	PlanarImage * d_2_1=CreatePlanarImage(width/2,height/2);
-	PlanarImage * d_2_2=CreatePlanarImage(width/2,height/2);
-	PlanarImage * d_4_1=CreatePlanarImage(width/4,height/4);
-	PlanarImage * d_4_2=CreatePlanarImage(width/4,height/4);
 	//remember to release!!!!!!!!!!!!!!
 	pCapture->GetSample(0,refImage);
 	pCapture->GetSample(1,srcImage);
@@ -184,7 +180,7 @@ int main( int argc, const char** argv )
 
 	double meTime=0;
 	double meStart=time_stamp();
-	PyramidME_weak(refImage->Y,srcImage->Y,MVs,me4);
+	PyramidME_weak(refImage->Y,srcImage->Y,MVs,me16,1);
 	meTime+=time_stamp()-meStart;
 
 	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());

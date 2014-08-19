@@ -367,9 +367,6 @@ void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<Moti
 	std::vector<MotionVector> MV_pre4;
 	std::vector<MotionVector> MV_pre16;
 	std::vector<MotionVector> MV_non;
-	std::vector<MotionVector> MV_r;
-	std::vector<MotionVector> MV_u;
-	std::vector<MotionVector> MV_d;
 	int pre4[2];
 	int pre16[2];
 	int non[2];
@@ -414,6 +411,9 @@ void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<Moti
 		MVs[i]=(cost_pre4>cost_non)?
 			((cost_non>cost_pre16)?MV_pre16[i]:MV_non[i]):MV_pre4[i];
 	}
+	delete [] non_res;
+	delete [] pre16_res;
+	delete [] pre4_res;
 }
 void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,int width,int height)
 {
@@ -437,9 +437,6 @@ void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<Moti
 	std::vector<MotionVector> MV_pre4;
 	std::vector<MotionVector> MV_pre16;
 	std::vector<MotionVector> MV_non;
-	std::vector<MotionVector> MV_r;
-	std::vector<MotionVector> MV_u;
-	std::vector<MotionVector> MV_d;
 	int pre4[2];
 	int pre16[2];
 	int non[2];
@@ -478,6 +475,62 @@ void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<Moti
 		MVs[i]=(cost_pre4>cost_non)?
 			((cost_non>cost_pre16)?MV_pre16[i]:MV_non[i]):MV_pre4[i];
 	}
+	delete [] non_res;
+	delete [] pre16_res;
+	delete [] pre4_res;
+}
+void compare_weak(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,int width,int height)
+{
+    cl::size_t<3> origin;
+    origin[0] = 0;
+    origin[1] = 0;
+    origin[2] = 0;
+    cl::size_t<3> region;
+	region[0] = width;
+    region[1] = height;
+    region[2] = 1;
+	ME me4(width,height,4);
+	ME me16(width,height,16);
+	cl::Image2D refImage(me4.refImage);
+	cl::Image2D srcImage(me4.srcImage);
+	int mvImageHeight=me4.mvImageHeight;
+	int mvImageWidth=me4.mvImageWidth;
+	USHORT * pre4_res = new USHORT[mvImageHeight*mvImageWidth];
+	USHORT * pre16_res = new USHORT[mvImageHeight*mvImageWidth];
+	std::vector<MotionVector> MV_pre4;
+	std::vector<MotionVector> MV_pre16;
+	int pre4[2];
+	int pre16[2];
+	
+	me4.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+	me4.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+
+	me4.ExtractMotionEstimation(refImage,srcImage,MV_pre4,preMVs,pre4_res,FALSE);
+
+	refImage=me16.refImage;
+	srcImage=me16.srcImage;
+
+	me16.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+	me16.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+
+	me16.ExtractMotionEstimation(refImage,srcImage,MV_pre16,preMVs,pre16_res,FALSE);
+
+	MVs.resize(mvImageHeight*mvImageWidth);
+	for(int i=0;i<mvImageHeight*mvImageWidth;i++)
+	{
+		pre4[0]=abs(MV_pre4[i].s[0]);
+		pre4[1]=abs(MV_pre4[i].s[1]);
+		pre16[0]=abs(MV_pre16[i].s[0]);
+		pre16[1]=abs(MV_pre16[i].s[1]);
+		int MVbit_pre4=(int)(log10(pre4[0]+1)/log10(2)+log10(pre4[1]+1)/log10(2));
+		int MVbit_pre16=(int)(log10(pre16[0]+1)/log10(2)+log10(pre16[1]+1)/log10(2));
+		int cost_pre4=pre4_res[i]+ MVbit_pre4 * lambda;
+		int cost_pre16=pre16_res[i]+ MVbit_pre16 * lambda;
+		//std::cout<<cost_non<<"\t"<<cost_pre4<<"\t"<<cost_pre16<<"\t"<<MVbit_non<<"\t"<<MVbit_pre4<<"\t"<<MVbit_pre16<<"\n";
+		MVs[i]=(cost_pre4>cost_pre16)?MV_pre16[i]:MV_pre4[i];
+	}
+	delete [] pre4_res;
+	delete [] pre16_res;
 }
 void PyramidME(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me, int Layers)
 {
@@ -525,7 +578,7 @@ void PyramidME(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me, int L
 	YUVUtils::ReleaseImage(ref_l[0]);
 	
 }
-void PyramidME_weak(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me)
+void PyramidME_weak(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me,int Layers)
 {
 	std::vector<MotionVector> MV;
 	std::vector<MotionVector> MV_ref;
@@ -536,25 +589,30 @@ void PyramidME_weak(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me)
 	int w=width/pow(2,1);
 	int h=height/pow(2,1);
 	ME d2(w,h,4);
-	w/=2;
-	h/=2;
-	ME d4(w,h,4);
 	ref_l[0]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
 	src_l[0]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
 	me.downsampling(src,src_l[0]->Y);
 	me.downsampling(ref,ref_l[0]->Y);
-	ref_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,2),height/pow(2,2));
-	src_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,2),height/pow(2,2));
-	d2.downsampling(src_l[0]->Y,src_l[1]->Y);
-	d2.downsampling(ref_l[0]->Y,ref_l[1]->Y);
-	d4.ExtractMotionEstimation_b(ref_l[1]->Y,src_l[1]->Y,MV,MV_ref,NULL,FALSE);
-	d2.resampling(MV,MV_ref);
+	if(Layers==2)
+	{
+		w/=2;
+		h/=2;
+		ref_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,2),height/pow(2,2));
+		src_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,2),height/pow(2,2));
+		d2.downsampling(src_l[0]->Y,src_l[1]->Y);
+		d2.downsampling(ref_l[0]->Y,ref_l[1]->Y);
+		compare_weak(ref_l[1]->Y,src_l[1]->Y,MV,MV_ref,w,h);
+		d2.resampling(MV,MV_ref);
+		YUVUtils::ReleaseImage(src_l[1]);
+		YUVUtils::ReleaseImage(ref_l[1]);
+	}
 	w=width/pow(2,1);
 	h=height/pow(2,1);
-	compare(ref_l[0]->Y,src_l[0]->Y,MV,MV_ref,w,h);
+	if(Layers==2)
+		compare(ref_l[0]->Y,src_l[0]->Y,MV,MV_ref,w,h);
+	else
+		compare_weak(ref_l[0]->Y,src_l[0]->Y,MV,MV_ref,w,h);
 	me.resampling(MV,MV_ref);
-	YUVUtils::ReleaseImage(src_l[1]);
-	YUVUtils::ReleaseImage(ref_l[1]);
 	compare(ref,src,MVs,MV_ref,width,height);
 	YUVUtils::ReleaseImage(src_l[0]);
 	YUVUtils::ReleaseImage(ref_l[0]);
