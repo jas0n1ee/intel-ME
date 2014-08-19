@@ -49,7 +49,9 @@ class ME
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& );
 		friend void compare(void *,void *,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
+		friend void compare(void *,void *,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
 		friend void PyramidME(void *ref,void *src,std::vector<MotionVector>& ,ME &me, int );
+		friend void PyramidME_weak(void *ref,void *src,std::vector<MotionVector>& ,ME &me);
 	private:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
