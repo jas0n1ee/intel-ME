@@ -170,8 +170,8 @@ int main( int argc, const char** argv )
 	ME me(width,height,16);
 	ME me4(width,height,4);
 	ME me16(width,height,16);
-	ME d2(width/2,height/2,16);
-	ME d4(width/4,height/4,4);
+//	ME d2(width/2,height/2,16);
+//	ME d4(width/4,height/4,4);
 	
 	int mvImageWidth, mvImageHeight;
 	me.ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
@@ -199,7 +199,7 @@ int main( int argc, const char** argv )
 	//d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,MV_tmp2,TRUE);
 	splStart=time_stamp();
 //	me.resampling(MV_tmp,MVs);
-	PyramidME(refImage->Y,srcImage->Y,MVs,me4,4);
+	PyramidME(refImage->Y,srcImage->Y,MVs,me4,3);
 	splTime=time_stamp()-splStart;
 
 	std::swap(MV_ref,MVs);	
