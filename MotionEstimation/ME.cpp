@@ -355,14 +355,17 @@ void PyramidME(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me, int L
 	std::vector<ME> Pyramid;
 	std::vector<YUVUtils::PlanarImage *>ref_l;
 	std::vector<YUVUtils::PlanarImage *>src_l;
+	std::vector<MotionVector> MV;
+	std::vector<MotionVector> MV_ref;
+
 	int width=me.width;
 	int height=me.height;
 	Pyramid.resize(Layers*sizeof(ME));
 	ref_l.resize(Layers*sizeof(YUVUtils::PlanarImage));
 	src_l.resize(Layers*sizeof(YUVUtils::PlanarImage));
+	MV.resize(Layers*sizeof(MotionVector));
 
 	Pyramid[0]=ME(me);
-
 	Pyramid[1]=ME(width/pow(2,1),height/pow(2,1),4);
 	ref_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
 	src_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
@@ -377,4 +380,19 @@ void PyramidME(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me, int L
 		Pyramid[i].downsampling(src_l[i-1]->Y,src_l[i]->Y);
 		Pyramid[i].downsampling(ref_l[i-1]->Y,ref_l[i]->Y);
 	}
+	Pyramid[Layers-1].ExtractMotionEstimation(src_l[Layers-1]->Y,ref_l[Layers-1]->Y,MV,MV_ref,NULL,FALSE);
+	Pyramid[Layers-1].resampling(MV,MV_ref);
+	YUVUtils::ReleaseImage(src_l[Layers-1]);
+	YUVUtils::ReleaseImage(ref_l[Layers-1]);
+	for(int i=Layers-2;i>0;i--)
+	{
+		Pyramid[i].ExtractMotionEstimation(src_l[i]->Y,ref_l[i]->Y,MV,MV_ref,NULL,TRUE);
+		Pyramid[i].resampling(MV,MV_ref);
+		YUVUtils::ReleaseImage(src_l[i]);
+		YUVUtils::ReleaseImage(ref_l[i]);
+	}
+	Pyramid[0].ExtractMotionEstimation(src,ref,MVs,MV_ref,NULL,TRUE);
+	YUVUtils::ReleaseImage(src_l[0]);
+	YUVUtils::ReleaseImage(ref_l[0]);
+	
 }

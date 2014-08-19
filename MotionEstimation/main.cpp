@@ -187,19 +187,21 @@ int main( int argc, const char** argv )
 	double splTime=0;
 
 	double splStart=time_stamp();
-	me.downsampling(srcImage->Y,d_2_1->Y);
-	me.downsampling(refImage->Y,d_2_2->Y);
+//	me.downsampling(srcImage->Y,d_2_1->Y);
+//	me.downsampling(refImage->Y,d_2_2->Y);
 	splTime+=time_stamp()-splStart;
 	
 	double meStart=time_stamp();
-	d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,(vector<MotionVector>)NULL,NULL,FALSE);
+//	d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,(vector<MotionVector>)NULL,NULL,FALSE);
 	meTime+=time_stamp()-meStart;
 	
 	//d2.resampling(MV_tmp,MV_tmp2);
 	//d2.ExtractMotionEstimation(d_2_1->Y,d_2_2->Y,MV_tmp,MV_tmp2,TRUE);
 	splStart=time_stamp();
-	me.resampling(MV_tmp,MVs);
+//	me.resampling(MV_tmp,MVs);
+	PyramidME(refImage->Y,srcImage->Y,MVs,me4,4);
 	splTime=time_stamp()-splStart;
+
 	std::swap(MV_ref,MVs);	
 	compare(srcImage->Y,refImage->Y,MVs,MV_ref,me4,me16);
 	//me.costfunction(srcImage->Y,refImage->Y,MVs,MV_ref);

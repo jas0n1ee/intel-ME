@@ -49,7 +49,7 @@ class ME
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& );
 		friend void compare(void *,void *,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
-		friend void PyramidME(void *,void *,std::vector<MotionVector>& ,ME &me, int );
+		friend void PyramidME(void *ref,void *src,std::vector<MotionVector>& ,ME &me, int );
 	private:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
