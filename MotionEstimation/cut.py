@@ -7,6 +7,6 @@ l=int(sys.argv[4])
 f_out=sys.argv[5]
 f_size=w*h*3/2
 with open(f_in,'rb') as fd_in, open(f_out,'wb') as fd_out:
-	for i in range(15):
+	for i in range(l):
 		data=fd_in.read(f_size)
 		fd_out.write(data)
