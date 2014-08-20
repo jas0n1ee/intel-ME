@@ -6,7 +6,7 @@
 #include "oclobject.hpp"
 #include "yuv_utils.h"
 #define CL_EXT_DECLARE(name) static name##_fn pfn_##name = 0;
-#define lambda 400;
+#define lambda 700;
 #define CL_EXT_INIT_WITH_PLATFORM(platform, name) { \
     pfn_##name = (name##_fn) clGetExtensionFunctionAddressForPlatform(platform, #name); \
     if (! pfn_##name ) \
@@ -56,6 +56,7 @@ class ME
 		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
 		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
 		friend void compare_weak(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
+		friend void compare_pro(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
 		friend void PyramidME(void *ref,void *src,std::vector<MotionVector>& ,ME &me, int );
 		friend void PyramidME_weak(void *ref,void *src,std::vector<MotionVector>& ,ME &me,int);
 	private:
