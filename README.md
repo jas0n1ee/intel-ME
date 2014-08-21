@@ -35,3 +35,34 @@ we only use `uint8_t * Y` part in this program.
 	    __cl_short2     v2;
 	#endif
 	}cl_short2;
+
+#function defined in ME.h
+		void ComputeNumMVs( cl_uint nMBType, int nPicWidth, int nPicHeight, int & nMVSurfWidth, int & nMVSurfHeight );
+		//origin function in intel Motion Estimation
+		unsigned int ComputeSubBlockSize( cl_uint nMBType );
+		//same as above
+		void downsampling(void *src,void *det);
+		//downsampling the image, will be replace by cl code in the future
+		void resampling(void *src,void *det);
+		void resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det);
+		//resampling the image and MV
+		friend std::vector<MotionVector> moveMV(std::vector<MotionVector> src,int direction,int mvImageHeight,int mvImageWidth);
+		//move MV map to different direction, less usage
+		void costfunction(void *ref,void *src,
+				std::vector<MotionVector>& ,
+				std::vector<MotionVector>& );
+		//first version to compute cost and select the least one
+		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
+		//version that needs input of ME object
+		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
+		//version that dont need ME object
+		friend void compare_weak(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
+		//version that dont need ref_MV
+		friend void compare_pro(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
+		//version that contain pyramid and original compare function
+		friend void compare_MV(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int *,int width,int height);
+		//work with moveMV, little usage
+		friend void PyramidME(void *ref,void *src,std::vector<MotionVector>& ,ME &me, int );
+		//unfinished Pyramid function, lots of bugs
+		friend void PyramidME_weak(void *ref,void *src,std::vector<MotionVector>& ,ME &me,int);
+		//small size Pyramid, work well
