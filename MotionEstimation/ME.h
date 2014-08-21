@@ -6,7 +6,8 @@
 #include "oclobject.hpp"
 #include "yuv_utils.h"
 #define CL_EXT_DECLARE(name) static name##_fn pfn_##name = 0;
-#define lambda 700;
+#define lambda 600;
+//#define enableMVmov
 #define CL_EXT_INIT_WITH_PLATFORM(platform, name) { \
     pfn_##name = (name##_fn) clGetExtensionFunctionAddressForPlatform(platform, #name); \
     if (! pfn_##name ) \
@@ -49,7 +50,7 @@ class ME
 		void downsampling(void *src,void *det);
 		void resampling(void *src,void *det);
 		void resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det);
-		std::vector<MotionVector> moveMV(std::vector<MotionVector> src,int direction);
+		friend std::vector<MotionVector> moveMV(std::vector<MotionVector> src,int direction,int mvImageHeight,int mvImageWidth);
 		void costfunction(void *ref,void *src,
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& );
@@ -57,6 +58,7 @@ class ME
 		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
 		friend void compare_weak(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
 		friend void compare_pro(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
+		friend void compare_MV(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int *,int width,int height);
 		friend void PyramidME(void *ref,void *src,std::vector<MotionVector>& ,ME &me, int );
 		friend void PyramidME_weak(void *ref,void *src,std::vector<MotionVector>& ,ME &me,int);
 	private:
