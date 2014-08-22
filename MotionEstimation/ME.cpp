@@ -494,6 +494,71 @@ void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<Moti
 	delete [] pre16_res;
 	delete [] pre4_res;
 }
+void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,int width,int height,int lam)
+{
+    cl::size_t<3> origin;
+    origin[0] = 0;
+    origin[1] = 0;
+    origin[2] = 0;
+    cl::size_t<3> region;
+	region[0] = width;
+    region[1] = height;
+    region[2] = 1;
+	ME me4(width,height,4);
+	ME me16(width,height,16);
+	cl::Image2D refImage(me4.refImage);
+	cl::Image2D srcImage(me4.srcImage);
+	int mvImageHeight=me4.mvImageHeight;
+	int mvImageWidth=me4.mvImageWidth;
+	USHORT * pre4_res = new USHORT[mvImageHeight*mvImageWidth];
+	USHORT * pre16_res = new USHORT[mvImageHeight*mvImageWidth];
+	USHORT * non_res = new USHORT[mvImageHeight*mvImageWidth];
+	std::vector<MotionVector> MV_pre4;
+	std::vector<MotionVector> MV_pre16;
+	std::vector<MotionVector> MV_non;
+	int pre4[2];
+	int pre16[2];
+	int non[2];
+	
+	me4.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+	me4.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+
+	me4.ExtractMotionEstimation(refImage,srcImage,MV_pre4,preMVs,pre4_res,TRUE);
+	me4.ExtractMotionEstimation(refImage,srcImage,MV_non,preMVs,non_res,FALSE);
+
+	refImage=me16.refImage;
+	srcImage=me16.srcImage;
+
+	me16.queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
+	me16.queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
+
+	me16.ExtractMotionEstimation(refImage,srcImage,MV_pre16,preMVs,pre16_res,TRUE);
+
+	MVs.resize(mvImageHeight*mvImageWidth);
+	for(int i=0;i<mvImageHeight*mvImageWidth;i++)
+	{
+		pre4[0]=abs(MV_pre4[i].s[0]-preMVs[i].s[0]);
+		pre4[1]=abs(MV_pre4[i].s[1]-preMVs[i].s[1]);
+		pre16[0]=abs(MV_pre16[i].s[0]-preMVs[i].s[0]);
+		pre16[1]=abs(MV_pre16[i].s[1]-preMVs[i].s[1]);
+		non[0]=abs(MV_non[i].s[0]-preMVs[i].s[0]);
+		non[1]=abs(MV_non[i].s[1]-preMVs[i].s[1]);
+		int MVbit_pre4=(int)(log10(pre4[0]+1)/log10(2)+log10(pre4[1]+1)/log10(2));
+		int MVbit_pre16=(int)(log10(pre16[0]+1)/log10(2)+log10(pre16[1]+1)/log10(2));
+		int MVbit_non=(int)(log10(non[0]+1)/log10(2)+log10(non[1]+1)/log10(2));
+		MVbit_non=min(MVbit_non,(int)(log10(abs(MV_non[i].s[0])+1)/log10(2)+log10(abs(MV_non[i].s[1])+1)/log10(2)));
+		int cost_pre4=pre4_res[i]+ MVbit_pre4 * lam;
+		int cost_pre16=pre16_res[i]+ MVbit_pre16 * lam;
+		int cost_non=non_res[i]+ MVbit_non * lam;
+		//std::cout<<cost_non<<"\t"<<cost_pre4<<"\t"<<cost_pre16<<"\t"<<MVbit_non<<"\t"<<MVbit_pre4<<"\t"<<MVbit_pre16<<"\n";
+		MVs[i]=(cost_pre4>cost_non)?
+			((cost_non>cost_pre16)?MV_pre16[i]:MV_non[i]):MV_pre4[i];
+		//MVs[i]=(cost_pre4>cost_non)?MV_non[i]:MV_pre4[i];
+	}
+	delete [] non_res;
+	delete [] pre16_res;
+	delete [] pre4_res;
+}
 void compare_weak(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,int width,int height)
 {
     cl::size_t<3> origin;
@@ -943,14 +1008,15 @@ void PyramidME_weak(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me,i
 	YUVUtils::ReleaseImage(ref_l[0]);
 	
 }
-void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,ME &me,int Layers)
+void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,ME &me,int Layers,int lam1,int lam2)
 {
 	std::vector<MotionVector> MV;
 	std::vector<MotionVector> MV_sub;
 	std::vector<MotionVector> MV_d2;
 	std::vector<MotionVector> MV_d4;
-	YUVUtils::PlanarImage*ref_l[2];
-	YUVUtils::PlanarImage*src_l[2];
+	std::vector<MotionVector> MV_d8;
+	YUVUtils::PlanarImage*ref_l[3];
+	YUVUtils::PlanarImage*src_l[3];
 	int width=me.width;
 	int height=me.height;
 	int w=width/pow(2,1);
@@ -961,7 +1027,7 @@ void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vect
 	me.downsampling(src,src_l[0]->Y);
 	me.downsampling(ref,ref_l[0]->Y);
 	me.downsampling(ref_MV,MV_d2);
-	if(Layers==2)
+	if(Layers>=2)
 	{
 
 		w/=2;
@@ -973,8 +1039,20 @@ void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vect
 		d2.downsampling(src_l[0]->Y,src_l[1]->Y);
 		d2.downsampling(ref_l[0]->Y,ref_l[1]->Y);
 		d2.downsampling(MV_d2,MV_d4);
-		d4.costfunction(ref_l[1]->Y,src_l[1]->Y,MV_sub,MV_d4);
-		compare(ref_l[1]->Y,src_l[1]->Y,MV,MV_sub,w,h);
+		if(Layers==3)
+		{
+			ME d8(w/2,h/2,2);
+			ref_l[2]=YUVUtils::CreatePlanarImage(width/pow(2,3),height/pow(2,3));
+			src_l[2]=YUVUtils::CreatePlanarImage(width/pow(2,3),height/pow(2,3));
+			d4.downsampling(src_l[1]->Y,src_l[2]->Y);
+			d4.downsampling(ref_l[1]->Y,ref_l[2]->Y);
+			d4.downsampling(MV_d4,MV_d8);
+			d8.costfunction(ref_l[2]->Y,src_l[2]->Y,MV_sub,MV_d8);
+			compare(ref_l[2]->Y,src_l[2]->Y,MV,MV_sub,w/2,h/2,lam1);
+			d4.resampling(MV,MV_sub);
+		}
+		else d4.costfunction(ref_l[1]->Y,src_l[1]->Y,MV_sub,MV_d4);
+		compare(ref_l[1]->Y,src_l[1]->Y,MV,MV_sub,w,h,lam1);
 		d2.resampling(MV,MV_sub);
 		YUVUtils::ReleaseImage(src_l[1]);
 		YUVUtils::ReleaseImage(ref_l[1]);
@@ -985,10 +1063,10 @@ void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vect
 	}
 	w=width/pow(2,1);
 	h=height/pow(2,1);
-	compare(ref_l[0]->Y,src_l[0]->Y,MV,MV_sub,w,h);
-//	me.resampling(MV,MVs);
+	compare(ref_l[0]->Y,src_l[0]->Y,MV,MV_sub,w,h,lam1);
+	//me.resampling(MV,MVs);
 	me.resampling(MV,MV_sub);
-	compare(ref,src,MVs,MV_sub,width,height);
+	compare(ref,src,MVs,MV_sub,width,height,lam2);
 	YUVUtils::ReleaseImage(src_l[0]);
 	YUVUtils::ReleaseImage(ref_l[0]);
 	
