@@ -214,9 +214,9 @@ int main( int argc, const char** argv )
 		//compare(refImage->Y,srcImage->Y,MVs,MV_ref,me4,me16);
 		//compare_pro(refImage->Y,srcImage->Y,MVs,MV_ref,width,height);
 		//PyramidME_pro(refImage->Y,srcImage->Y,MVs,MV_ref,me16,2,700,400);
-		PyramidME_pro(ref->Y,src->Y,MVs,MV_ref,md2,2,700,400);
+		PyramidME_pro(ref->Y,src->Y,MVs,MV_ref,md2,2,800,700);
 		me.resampling(MVs,MV_tmp);
-		compare(refImage->Y,srcImage->Y,MVs,MV_tmp,width,height,700);
+		//compare(refImage->Y,srcImage->Y,MVs,MV_tmp,width,height,700);
 		std::cout<<"METime\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
 		OverlayVectors(subBlockSize, &MV_tmp[0], srcImage, mvImageWidth, mvImageHeight, width, height);
 		//OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
