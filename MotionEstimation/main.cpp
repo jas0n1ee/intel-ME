@@ -19,6 +19,7 @@
 // problem reports or change requests be submitted to it directly
 
 #define __CL_ENABLE_EXCEPTIONS
+#define videofile "Cobra_3840x2160_30frames.yuv"
 
 #include <iostream>
 #include <vector>
@@ -52,7 +53,7 @@ public:
     CmdParser(argc, argv),
         out_to_bmp(*this,		'b',"nobmp","","Do not output frames to the sequence of bmp files (in addition to the yuv file), by default the output is on", ""),
         help(*this,				'h',"help","","Show this help text and exit."),
-        fileName(*this,			0,"input", "string", "Input video sequence filename (.yuv file format)","Cobra_3840x2160_15frames.yuv"),
+		fileName(*this,			0,"input", "string", "Input video sequence filename (.yuv file format)",videofile),
         overlayFileName(*this,	0,"output","string", "Output video sequence with overlaid motion vectors filename ","output.yuv"),
         width(*this,			0, "width",	"<integer>", "Frame width for the input file", 3840),
         height(*this,			0, "height","<integer>", "Frame height for the input file",2160)
@@ -195,13 +196,17 @@ int main( int argc, const char** argv )
 		std::swap(refImage,srcImage);
 		std::swap(MV_ref,MVs);	
 		pCapture->GetSample(i,srcImage);
-
+		
+/*
+		std::vector<MotionVector> temp;
+		me4.downsampling(MV_ref,temp);
+		me4.resampling(temp,MVs);
+*/
 		meStart=time_stamp();
-		//PyramidME_weak(refImage->Y,srcImage->Y,MVs,me16,2);
 		//compare(refImage->Y,srcImage->Y,MVs,MV_ref,me4,me16);
-		compare_pro(refImage->Y,srcImage->Y,MVs,MV_ref,width,height);
+		//compare_pro(refImage->Y,srcImage->Y,MVs,MV_ref,width,height);
+		PyramidME_pro(refImage->Y,srcImage->Y,MVs,MV_ref,me16,2);
 		std::cout<<"ME Time\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
-
 		OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
 		pWriter->AppendFrame(srcImage);
 	}

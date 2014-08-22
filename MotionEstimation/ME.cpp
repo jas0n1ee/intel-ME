@@ -97,6 +97,7 @@ ME::ME(int width,int height,int search_path)
 }
 void ME::ExtractMotionEstimation(cl::Image2D refImage,cl::Image2D srcImage,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,USHORT * residuals,bool preMVEnable)
 {
+	double time=time_stamp();	
 	MVs.resize(mvImageWidth * mvImageHeight);
 	// Load next picture
 	// Schedule full-frame motion estimation
@@ -119,6 +120,7 @@ void ME::ExtractMotionEstimation(cl::Image2D refImage,cl::Image2D srcImage,std::
 	queue.enqueueReadBuffer(mvBuffer,CL_TRUE,0,sizeof(MotionVector) * mvImageWidth * mvImageHeight,pMVs,0,0);
 	queue.enqueueReadBuffer(res,CL_TRUE,0,sizeof(USHORT) * mvImageWidth * mvImageHeight,residuals,0,0);
     	
+	std::cout<<"ExtractME time \t"<<1000*(time_stamp()-time)<<"(ms)\n";
 }
 void ME::ExtractMotionEstimation_b(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,USHORT * residuals,bool preMVEnable)
 {
@@ -136,6 +138,7 @@ void ME::ExtractMotionEstimation_b(void *ref,void *src,std::vector<MotionVector>
 	queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
 	// Load next picture
 	// Schedule full-frame motion estimation
+	double time=time_stamp();
 	kernel.setArg(0, accelerator);
 	kernel.setArg(1, srcImage);
 	kernel.setArg(2, refImage);
@@ -154,6 +157,7 @@ void ME::ExtractMotionEstimation_b(void *ref,void *src,std::vector<MotionVector>
 	void * pMVs = &MVs[0];
 	queue.enqueueReadBuffer(mvBuffer,CL_TRUE,0,sizeof(MotionVector) * mvImageWidth * mvImageHeight,pMVs,0,0);
 	queue.enqueueReadBuffer(res,CL_TRUE,0,sizeof(USHORT) * mvImageWidth * mvImageHeight,residuals,0,0);
+	std::cout<<"ExtractME time \t"<<1000*(time_stamp()-time)<<"(ms)\n";
 }
 ME::~ME()
 {
@@ -161,6 +165,7 @@ ME::~ME()
 }
 void ME::downsampling(void*s,void*d)
 {
+	double time=time_stamp();
 	uint8_t * src=(unsigned char *)s;
 	uint8_t * det=(unsigned char *)d;
 	int w2=width/2;
@@ -171,8 +176,24 @@ void ME::downsampling(void*s,void*d)
 			det[i*w2+j]=(src[i*2*width+j*2]+src[i*2*width+j*2+1]+src[(i*2+1)*width+j*2]+src[(i*2+1)*width+j*2+1])/4;
 		}
 	}
+	std::cout<<"downsample time \t"<<1000*(time_stamp()-time)<<"(ms)\n";
 }
-
+void ME::downsampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det)
+{
+	double time=time_stamp();
+	int w2,h2;
+	ComputeNumMVs(kMBBlockType, width/2, height/2, w2, h2);
+	det.resize(w2*h2);
+	for(int i=0;i<mvImageHeight/2;i++)
+	{
+		for(int j=0;j<mvImageWidth/2;j++)
+		{
+			det[i*w2+j].s[0]=(src[i*2*mvImageWidth+j*2].s[0]+src[i*2*mvImageWidth+j*2+1].s[0]+src[(i*2+1)*mvImageWidth+j*2].s[0]+src[(i*2+1)*mvImageWidth+j*2+1].s[0])/8;
+			det[i*w2+j].s[1]=(src[i*2*mvImageWidth+j*2].s[1]+src[i*2*mvImageWidth+j*2+1].s[1]+src[(i*2+1)*mvImageWidth+j*2].s[1]+src[(i*2+1)*mvImageWidth+j*2+1].s[1])/8;
+		}
+	}
+	std::cout<<"downsample time \t"<<1000*(time_stamp()-time)<<"(ms)\n";
+}
 void ME::resampling(void*s,void*d)
 {
 	uint8_t * src=(unsigned char *)s;
@@ -191,6 +212,7 @@ void ME::resampling(void*s,void*d)
 }
 void ME::resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det)
 {
+	double time=time_stamp();
 	int w2=mvImageWidth/2;
 	det.resize(mvImageHeight*mvImageWidth);
 	for(int i=0;i<mvImageHeight/2;i++)
@@ -207,6 +229,7 @@ void ME::resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det)
 			det[(2*i+1)*mvImageWidth+j*2+1].s[1]=src[i*w2+j].s[1]*2;
 		}
 	}
+	std::cout<<"resample time \t\t"<<1000*(time_stamp()-time)<<"(ms)\n";
 }
 void ME::costfunction(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs)
 {
@@ -220,16 +243,14 @@ void ME::costfunction(void *ref,void *src,std::vector<MotionVector>& MVs,std::ve
     region[2] = 1;
 	MVs.resize(mvImageWidth * mvImageHeight);
 	queue.enqueueWriteImage(refImage, CL_TRUE, origin, region, 0, 0, ref);
-    // Copy to tiled image memory - this copy (and its overhead) is not necessary in a full GPU pipeline
 	queue.enqueueWriteImage(srcImage, CL_TRUE, origin, region, 0, 0, src);
 	USHORT * pre_res = new USHORT[mvImageHeight*mvImageWidth];
 	USHORT * non_res = new USHORT[mvImageHeight*mvImageWidth];
 	std::vector<MotionVector> MV_pre;
 	std::vector<MotionVector> MV_non;
-	std::vector<MotionVector> MV_l;
-	std::vector<MotionVector> MV_r;
-	std::vector<MotionVector> MV_u;
-	std::vector<MotionVector> MV_d;
+	MotionVector zero;
+	zero.s[0]=0;
+	zero.s[1]=0;
 	int pre[2];
 	int non[2];
 	ExtractMotionEstimation(refImage,srcImage,MV_pre,preMVs,pre_res,TRUE);
@@ -237,16 +258,9 @@ void ME::costfunction(void *ref,void *src,std::vector<MotionVector>& MVs,std::ve
 	MVs.resize(mvImageHeight*mvImageWidth);
 	for(int i=0;i<mvImageHeight*mvImageWidth;i++)
 	{
-		pre[0]=abs(MV_pre[i].s[0]-preMVs[i].s[0]);
-		pre[1]=abs(MV_pre[i].s[1]-preMVs[i].s[1]);
-		non[0]=abs(MV_non[i].s[0]-preMVs[i].s[0]);
-		non[1]=abs(MV_non[i].s[1]-preMVs[i].s[1]);
-		int MVbit_pre=(int)(log10(pre[0]+1)/log10(2)+log10(pre[1]+1)/log10(2));
-		int MVbit_non=(int)(log10(non[0]+1)/log10(2)+log10(non[1]+1)/log10(2));
-		MVbit_non=min(MVbit_non,(int)(log10(MV_non[i].s[0]+1)/log10(2)+log10(MV_non[i].s[1]+1)/log10(2)));
-		int cost_pre=pre_res[i]+ MVbit_pre * lambda;
-		int cost_non=non_res[i]+ MVbit_non * lambda;
-		MVs[i]=(cost_pre>cost_non)?MV_non[i]:MV_pre[i];
+		int cost_pre=pre_res[i];
+		int cost_non=non_res[i];
+		MVs[i]=(cost_pre>cost_non)?zero:preMVs[i];
 	}
 }
 std::vector<MotionVector> moveMV(std::vector<MotionVector> src,int direction,int mvImageHeight,int mvImageWidth)
@@ -472,8 +486,9 @@ void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<Moti
 		int cost_pre16=pre16_res[i]+ MVbit_pre16 * lambda;
 		int cost_non=non_res[i]+ MVbit_non * lambda;
 		//std::cout<<cost_non<<"\t"<<cost_pre4<<"\t"<<cost_pre16<<"\t"<<MVbit_non<<"\t"<<MVbit_pre4<<"\t"<<MVbit_pre16<<"\n";
-		MVs[i]=(cost_pre4>cost_non)?
-			((cost_non>cost_pre16)?MV_pre16[i]:MV_non[i]):MV_pre4[i];
+		//MVs[i]=(cost_pre4>cost_non)?
+		//	((cost_non>cost_pre16)?MV_pre16[i]:MV_non[i]):MV_pre4[i];
+		MVs[i]=(cost_pre4>cost_non)?MV_non[i]:MV_pre4[i];
 	}
 	delete [] non_res;
 	delete [] pre16_res;
@@ -928,4 +943,53 @@ void PyramidME_weak(void *ref,void *src, std::vector<MotionVector> &MVs,ME &me,i
 	YUVUtils::ReleaseImage(ref_l[0]);
 	
 }
+void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,ME &me,int Layers)
+{
+	std::vector<MotionVector> MV;
+	std::vector<MotionVector> MV_sub;
+	std::vector<MotionVector> MV_d2;
+	std::vector<MotionVector> MV_d4;
+	YUVUtils::PlanarImage*ref_l[2];
+	YUVUtils::PlanarImage*src_l[2];
+	int width=me.width;
+	int height=me.height;
+	int w=width/pow(2,1);
+	int h=height/pow(2,1);
+	ME d2(w,h,4);
+	ref_l[0]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
+	src_l[0]=YUVUtils::CreatePlanarImage(width/pow(2,1),height/pow(2,1));
+	me.downsampling(src,src_l[0]->Y);
+	me.downsampling(ref,ref_l[0]->Y);
+	me.downsampling(ref_MV,MV_d2);
+	if(Layers==2)
+	{
 
+		w/=2;
+		h/=2;
+		ME d4(w,h,2);
+
+		ref_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,2),height/pow(2,2));
+		src_l[1]=YUVUtils::CreatePlanarImage(width/pow(2,2),height/pow(2,2));
+		d2.downsampling(src_l[0]->Y,src_l[1]->Y);
+		d2.downsampling(ref_l[0]->Y,ref_l[1]->Y);
+		d2.downsampling(MV_d2,MV_d4);
+		d4.costfunction(ref_l[1]->Y,src_l[1]->Y,MV_sub,MV_d4);
+		compare(ref_l[1]->Y,src_l[1]->Y,MV,MV_sub,w,h);
+		d2.resampling(MV,MV_sub);
+		YUVUtils::ReleaseImage(src_l[1]);
+		YUVUtils::ReleaseImage(ref_l[1]);
+	}
+	else
+	{
+		d2.costfunction(ref_l[0]->Y,src_l[0]->Y,MV_sub,MV_d2);
+	}
+	w=width/pow(2,1);
+	h=height/pow(2,1);
+	compare(ref_l[0]->Y,src_l[0]->Y,MV,MV_sub,w,h);
+//	me.resampling(MV,MVs);
+	me.resampling(MV,MV_sub);
+	compare(ref,src,MVs,MV_sub,width,height);
+	YUVUtils::ReleaseImage(src_l[0]);
+	YUVUtils::ReleaseImage(ref_l[0]);
+	
+}
