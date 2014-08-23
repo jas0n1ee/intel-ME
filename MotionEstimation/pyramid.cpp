@@ -107,7 +107,6 @@ void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vect
 	me.downsampling(ref_MV,MV_d2);
 	if(Layers>=2)
 	{
-
 		w/=2;
 		h/=2;
 		ME d4(w,h,2);
@@ -142,9 +141,9 @@ void PyramidME_pro(void *ref,void *src, std::vector<MotionVector> &MVs,std::vect
 	w=width/pow(2,1);
 	h=height/pow(2,1);
 	compare(ref_l[0]->Y,src_l[0]->Y,MV,MV_sub,w,h,lam1);
-	//me.resampling(MV,MVs);
-	me.resampling(MV,MV_sub);
-	compare(ref,src,MVs,MV_sub,width,height,lam2);
+	me.resampling(MV,MVs);
+	//me.resampling(MV,MV_sub);
+	//compare(ref,src,MVs,MV_sub,width,height,lam2);
 	YUVUtils::ReleaseImage(src_l[0]);
 	YUVUtils::ReleaseImage(ref_l[0]);
 	
