@@ -181,10 +181,8 @@
     <ClCompile Include="..\common\oclobject.cpp" />
     <ClCompile Include="..\common\utils.cpp" />
     <ClCompile Include="..\common\yuv_utils.cpp" />
-    <ClCompile Include="compare.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="ME.cpp" />
-    <ClCompile Include="pyramid.cpp" />
     <ClCompile Include="sampling.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -194,6 +192,7 @@
     <ClInclude Include="..\common\utils.h" />
     <ClInclude Include="..\common\yuv_utils.h" />
     <ClInclude Include="ME.h" />
+    <ClInclude Include="picinfo.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="README.txt" />

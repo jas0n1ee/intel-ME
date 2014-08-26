@@ -143,7 +143,78 @@ void OverlayVectors(unsigned int subBlockSize, const MotionVector* pMV, PlanarIm
     }
 }
 
-int main( int argc, const char** argv )
+int main_1080p( int argc, const char** argv )
+{
+	CmdParserMV cmd(argc, argv);
+	cmd.parse();
+
+	// Immediatly exit if user wanted to see the usage information only.
+
+	const int width = cmd.width.getValue();
+	const int height = cmd.height.getValue();
+	// Open input sequence
+	Capture * pCapture = Capture::CreateFileCapture(cmd.fileName.getValue(), width, height);
+	int numPics=pCapture->GetNumFrames();
+	// Process sequence
+	std::cout << "Processing " << numPics << " frames ..." << std::endl;
+			
+	PlanarImage * refImage = CreatePlanarImage(width, height);
+	PlanarImage * srcImage = CreatePlanarImage(width, height);
+	//remember to release!!!!!!!!!!!!!!
+	pCapture->GetSample(0,refImage);
+	pCapture->GetSample(1,srcImage);
+
+
+
+	ME me(width,height,16);
+	picinfo info=picinfo(width,height);
+	int mvImageWidth, mvImageHeight;
+	me.ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
+	std::vector<MotionVector> MVs;
+	std::vector<MotionVector> MV_ref;
+
+	double meTime=0;
+	double meStart=time_stamp();
+	PyramidME_weak(refImage->Y,srcImage->Y,MVs,info,2,NULL,800,700);
+	//PyramidME_weak(refImage->Y,srcImage->Y,MVs,me16,2);
+	std::cout<<"ME Time\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
+	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
+	unsigned int subBlockSize = me.ComputeSubBlockSize(kMBBlockType);
+
+	OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+	pWriter->AppendFrame(refImage);
+	pWriter->AppendFrame(srcImage);
+
+	for(int i=2;i<numPics;i++)
+	{
+		//std::swap(refImage,srcImage);
+		std::swap(refImage,srcImage);
+		std::swap(MV_ref,MVs);	
+		pCapture->GetSample(i,srcImage);
+		meStart=time_stamp();
+		PyramidME_1080p(refImage->Y,srcImage->Y,MVs,MV_ref,info,2,NULL,800,700);
+		//compare(refImage->Y,srcImage->Y,MVs,MVs,info,NULL,800);
+		std::cout<<"METime\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
+		OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+		//OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+		pWriter->AppendFrame(srcImage);
+	}
+	// Generate sequence with overlaid motion vectors
+
+	// Overlay MVs on Src picture, except the very first one
+	std::cout << "Writing " << pCapture->GetNumFrames() << " frames to " << cmd.overlayFileName.getValue() << "..." << std::endl;
+	pWriter->WriteToFile(cmd.overlayFileName.getValue().c_str());
+
+	FrameWriter::Release(pWriter);
+	Capture::Release(pCapture);
+	ReleaseImage(srcImage);
+	ReleaseImage(refImage);
+
+    std::cout << "Done!" << std::endl;
+
+    return 0;
+}
+int main_4k( int argc, const char** argv )
 {
 	CmdParserMV cmd(argc, argv);
 	cmd.parse();
@@ -169,9 +240,7 @@ int main( int argc, const char** argv )
 
 
 	ME me(width,height,16);
-	ME me4(width,height,4);
-	ME me16(width,height,16);
-	ME md2(width/2,height/2,4);	
+	picinfo info=picinfo(width,height);
 	int mvImageWidth, mvImageHeight;
 	me.ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
 	me.downsampling(srcImage->Y,src->Y);
@@ -185,7 +254,7 @@ int main( int argc, const char** argv )
 
 	double meTime=0;
 	double meStart=time_stamp();
-	PyramidME_weak(ref->Y,src->Y,MVs,md2,2);
+	PyramidME_weak(ref->Y,src->Y,MVs,info,2,NULL,800,700);
 	me.resampling(MVs,MV_tmp);
 	//PyramidME_weak(refImage->Y,srcImage->Y,MVs,me16,2);
 	std::cout<<"ME Time\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
@@ -214,9 +283,9 @@ int main( int argc, const char** argv )
 		//compare(refImage->Y,srcImage->Y,MVs,MV_ref,me4,me16);
 		//compare_pro(refImage->Y,srcImage->Y,MVs,MV_ref,width,height);
 		//PyramidME_pro(refImage->Y,srcImage->Y,MVs,MV_ref,me16,2,700,400);
-		PyramidME_pro(ref->Y,src->Y,MVs,MV_ref,md2,2,800,700);
+		PyramidME_1080p(ref->Y,src->Y,MVs,MV_ref,info,2,NULL,800,700);
 		me.resampling(MVs,MV_tmp);
-		compare(refImage->Y,srcImage->Y,MVs,MV_tmp,width,height,700);
+		compare(refImage->Y,srcImage->Y,MVs,MV_tmp,info,NULL,700);
 		std::cout<<"METime\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
 		OverlayVectors(subBlockSize, &MV_tmp[0], srcImage, mvImageWidth, mvImageHeight, width, height);
 		//OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
@@ -236,4 +305,15 @@ int main( int argc, const char** argv )
     std::cout << "Done!" << std::endl;
 
     return 0;
+}
+int main( int argc, const char** argv )
+{
+
+	CmdParserMV cmd(argc, argv);
+	cmd.parse();
+	const int width = cmd.width.getValue();
+	if(width==1920)
+		return main_1080p(argc,argv);
+	else
+		return main_4k(argc,argv);
 }

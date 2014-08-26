@@ -29,6 +29,13 @@ CL_EXT_DECLARE( clReleaseAcceleratorINTEL );
 
 typedef cl_short2 MotionVector;
 typedef unsigned char      uint8_t;
+struct picinfo
+{
+	int width;
+	int height;
+	picinfo(int w,int h){width=w;height=h;}
+};
+
 class ME
 {
 	public:
@@ -37,7 +44,7 @@ class ME
 		~ME();
 		void ExtractMotionEstimation(cl::Image2D refImage,cl::Image2D srcImage,
 				std::vector<MotionVector>& ,
-				std::vector<MotionVector>& ,
+				std::vector<MotionVector> ,
 				USHORT*,
 				bool);
 		void ExtractMotionEstimation_b(void *ref,void *src,
@@ -51,19 +58,14 @@ class ME
 		void downsampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det);
 		void resampling(void *src,void *det);
 		void resampling(std::vector<MotionVector>&src,std::vector<MotionVector>&det);
-		friend std::vector<MotionVector> moveMV(std::vector<MotionVector> src,int direction,int mvImageHeight,int mvImageWidth);
 		void costfunction(void *ref,void *src,
 				std::vector<MotionVector>& ,
 				std::vector<MotionVector>& );
-		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,ME &me4,ME &me16);
-		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
-		friend void compare(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height,int l);
-		friend void compare_weak(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
-		friend void compare_pro(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int width,int height);
-		friend void compare_MV(void *ref,void *src,std::vector<MotionVector>&,std::vector<MotionVector>&,int *,int width,int height);
-		friend void PyramidME(void *ref,void *src,std::vector<MotionVector>& ,ME &me, int );
-		friend void PyramidME_weak(void *ref,void *src,std::vector<MotionVector>& ,ME &me,int);
-		friend void PyramidME_pro(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector> &ref_MV,ME &me,int layer,int lam1,int lam2);
+		friend void compare_weak(void *ref,void *src,std::vector<MotionVector>&,picinfo info,int *cost,int lam);
+		friend void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,picinfo info,int *cost,int lam);
+		friend void PyramidME_weak(void *ref,void *src, std::vector<MotionVector> &MVs,picinfo info,int Layers,int *cost,int lam1,int lam2);
+		friend void PyramidME_1080p(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,picinfo info,int Layers,int *cost,int lam1,int lam2);
+		friend void PyramidME_4k(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,picinfo info,int Layers,int *cost,int lam1,int lam2);
 	private:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
