@@ -19,7 +19,7 @@
 // problem reports or change requests be submitted to it directly
 
 #define __CL_ENABLE_EXCEPTIONS
-#define videofile "Cobra_3840x2160_30frames.yuv"
+#define videofile "Cobra_3840x2160_15frames.yuv"
 
 #include <iostream>
 #include <vector>
@@ -175,8 +175,9 @@ int main_1080p( int argc, const char** argv )
 
 	double meTime=0;
 	double meStart=time_stamp();
+
 	PyramidME_weak(refImage->Y,srcImage->Y,MVs,info,2,NULL,800,700);
-	//PyramidME_weak(refImage->Y,srcImage->Y,MVs,me16,2);
+
 	std::cout<<"ME Time\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
 	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
 	unsigned int subBlockSize = me.ComputeSubBlockSize(kMBBlockType);
@@ -187,20 +188,18 @@ int main_1080p( int argc, const char** argv )
 
 	for(int i=2;i<numPics;i++)
 	{
-		//std::swap(refImage,srcImage);
 		std::swap(refImage,srcImage);
 		std::swap(MV_ref,MVs);	
 		pCapture->GetSample(i,srcImage);
 		meStart=time_stamp();
-		PyramidME_1080p(refImage->Y,srcImage->Y,MVs,MV_ref,info,2,NULL,800,700);
-		//compare(refImage->Y,srcImage->Y,MVs,MVs,info,NULL,800);
+
+		PyramidME_1080p(refImage->Y,srcImage->Y,MVs,MV_ref,info,1,NULL,800,700);
+
 		std::cout<<"METime\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
 		OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
-		//OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
 		pWriter->AppendFrame(srcImage);
 	}
 	// Generate sequence with overlaid motion vectors
-
 	// Overlay MVs on Src picture, except the very first one
 	std::cout << "Writing " << pCapture->GetNumFrames() << " frames to " << cmd.overlayFileName.getValue() << "..." << std::endl;
 	pWriter->WriteToFile(cmd.overlayFileName.getValue().c_str());
@@ -220,7 +219,6 @@ int main_4k( int argc, const char** argv )
 	cmd.parse();
 
 	// Immediatly exit if user wanted to see the usage information only.
-
 	const int width = cmd.width.getValue();
 	const int height = cmd.height.getValue();
 	// Open input sequence
@@ -231,68 +229,44 @@ int main_4k( int argc, const char** argv )
 			
 	PlanarImage * refImage = CreatePlanarImage(width, height);
 	PlanarImage * srcImage = CreatePlanarImage(width, height);
-	PlanarImage * src = CreatePlanarImage(width, height);
-	PlanarImage * ref = CreatePlanarImage(width, height);
-	//remember to release!!!!!!!!!!!!!!
 	pCapture->GetSample(0,refImage);
 	pCapture->GetSample(1,srcImage);
-
-
 
 	ME me(width,height,16);
 	picinfo info=picinfo(width,height);
 	int mvImageWidth, mvImageHeight;
 	me.ComputeNumMVs(kMBBlockType, width, height, mvImageWidth, mvImageHeight);
-	me.downsampling(srcImage->Y,src->Y);
-	me.downsampling(refImage->Y,ref->Y);
 	std::vector<MotionVector> MVs;
-	std::vector<MotionVector> MV_tmp;
-	std::vector<MotionVector> MV_tmp2;
+	std::vector<MotionVector> MV_1080p;
 	std::vector<MotionVector> MV_ref;
 	MVs.resize(mvImageHeight*mvImageWidth);
 	MV_ref.resize(mvImageHeight*mvImageWidth);
 
 	double meTime=0;
 	double meStart=time_stamp();
-	PyramidME_weak(ref->Y,src->Y,MVs,info,2,NULL,800,700);
-	me.resampling(MVs,MV_tmp);
-	//PyramidME_weak(refImage->Y,srcImage->Y,MVs,me16,2);
+	PyramidME_4k(refImage->Y,srcImage->Y,MVs,MV_ref,MV_1080p,info,2,NULL,800,700,FALSE);
 	std::cout<<"ME Time\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
 	FrameWriter * pWriter = FrameWriter::CreateFrameWriter(width, height, pCapture->GetNumFrames(), cmd.out_to_bmp.getValue());
 	unsigned int subBlockSize = me.ComputeSubBlockSize(kMBBlockType);
 
-	OverlayVectors(subBlockSize, &MV_tmp[0], srcImage, mvImageWidth, mvImageHeight, width, height);
-	//OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+	OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
 	pWriter->AppendFrame(refImage);
 	pWriter->AppendFrame(srcImage);
 
 	for(int i=2;i<numPics;i++)
 	{
-		//std::swap(refImage,srcImage);
-		std::swap(ref,src);
 		std::swap(refImage,srcImage);
 		std::swap(MV_ref,MVs);	
 		pCapture->GetSample(i,srcImage);
-		me.downsampling(srcImage->Y,src->Y);	
-/*
-		std::vector<MotionVector> temp;
-		me4.downsampling(MV_ref,temp);
-		me4.resampling(temp,MVs);
-*/
 		meStart=time_stamp();
-		//compare(refImage->Y,srcImage->Y,MVs,MV_ref,me4,me16);
-		//compare_pro(refImage->Y,srcImage->Y,MVs,MV_ref,width,height);
-		//PyramidME_pro(refImage->Y,srcImage->Y,MVs,MV_ref,me16,2,700,400);
-		PyramidME_1080p(ref->Y,src->Y,MVs,MV_ref,info,2,NULL,800,700);
-		me.resampling(MVs,MV_tmp);
-		compare(refImage->Y,srcImage->Y,MVs,MV_tmp,info,NULL,700);
+
+		PyramidME_4k(refImage->Y,srcImage->Y,MVs,MV_ref,MV_1080p,info,2,NULL,800,700,TRUE);
+
 		std::cout<<"METime\t\t"<<1000*(time_stamp()-meStart)<<"ms"<<std::endl;
-		OverlayVectors(subBlockSize, &MV_tmp[0], srcImage, mvImageWidth, mvImageHeight, width, height);
-		//OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
+		OverlayVectors(subBlockSize, &MVs[0], srcImage, mvImageWidth, mvImageHeight, width, height);
 		pWriter->AppendFrame(srcImage);
 	}
 	// Generate sequence with overlaid motion vectors
-
 	// Overlay MVs on Src picture, except the very first one
 	std::cout << "Writing " << pCapture->GetNumFrames() << " frames to " << cmd.overlayFileName.getValue() << "..." << std::endl;
 	pWriter->WriteToFile(cmd.overlayFileName.getValue().c_str());

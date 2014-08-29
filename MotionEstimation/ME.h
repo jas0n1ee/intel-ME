@@ -65,7 +65,7 @@ class ME
 		friend void compare(void *ref,void *src,std::vector<MotionVector>& MVs,std::vector<MotionVector>&preMVs,picinfo info,int *cost,int lam);
 		friend void PyramidME_weak(void *ref,void *src, std::vector<MotionVector> &MVs,picinfo info,int Layers,int *cost,int lam1,int lam2);
 		friend void PyramidME_1080p(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,picinfo info,int Layers,int *cost,int lam1,int lam2);
-		friend void PyramidME_4k(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,picinfo info,int Layers,int *cost,int lam1,int lam2);
+		friend void PyramidME_4k(void *ref,void *src, std::vector<MotionVector> &MVs,std::vector<MotionVector> &ref_MV,std::vector<MotionVector>& MV_1080p,picinfo info,int Layers,int *cost,int lam1,int lam2,bool EnPreMV);
 	private:
 		int height,width;
 		int mvImageHeight,mvImageWidth;
